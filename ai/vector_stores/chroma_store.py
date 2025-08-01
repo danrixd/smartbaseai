@@ -74,7 +74,9 @@ class TenantVectorStore:
 
     def add_document(self, doc_id: str, text: str, metadata: dict | None = None) -> None:
         """Add a single document to the tenant collection."""
-        self.collection.add(ids=[doc_id], documents=[text], metadatas=[metadata or {}])
+        if not metadata:
+            metadata = {"doc_id": doc_id}
+        self.collection.add(ids=[doc_id], documents=[text], metadatas=[metadata])
 
     def query(self, text: str, n_results: int = 3) -> dict:
         """Query the collection for similar documents."""
