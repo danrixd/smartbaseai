@@ -89,3 +89,17 @@ curl -H "Authorization: Bearer <token>" http://localhost:8000/admin/tenants
 curl -H "Authorization: Bearer <token>" http://localhost:8000/admin/tenants/t1
 ```
 
+## Testing
+
+Install the Python dependencies before running the test suite:
+
+```bash
+pip install -r requirements.txt
+```
+
+Run all unit tests with:
+
+```bash
+pytest -q
+```
+
