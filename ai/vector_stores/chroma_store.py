@@ -3,8 +3,12 @@
 from typing import Iterable, List, Tuple
 import os
 
-import chromadb
-from chromadb.utils import embedding_functions
+try:
+    import chromadb  # type: ignore
+    from chromadb.utils import embedding_functions  # type: ignore
+except Exception:  # pragma: no cover - optional dependency
+    chromadb = None  # type: ignore
+    embedding_functions = None  # type: ignore
 
 
 class ChromaStore:
@@ -41,16 +45,32 @@ class TenantVectorStore:
         self.persist_path = os.path.join(persist_dir, tenant_id)
         os.makedirs(self.persist_path, exist_ok=True)
 
-        self.client = chromadb.PersistentClient(path=self.persist_path)
+        if chromadb is not None:
+            self.client = chromadb.PersistentClient(path=self.persist_path)
 
-        self.embedding_fn = embedding_functions.SentenceTransformerEmbeddingFunction(
-            model_name="sentence-transformers/all-MiniLM-L6-v2"
-        )
+            self.embedding_fn = embedding_functions.SentenceTransformerEmbeddingFunction(
+                model_name="sentence-transformers/all-MiniLM-L6-v2"
+            )
 
-        self.collection = self.client.get_or_create_collection(
-            name="documents",
-            embedding_function=self.embedding_fn,
-        )
+            self.collection = self.client.get_or_create_collection(
+                name="documents",
+                embedding_function=self.embedding_fn,
+            )
+        else:  # pragma: no cover - fallback when chromadb is missing
+            self.client = None
+
+            class _DummyCollection:
+                def __init__(self) -> None:
+                    self.docs: list[str] = []
+
+                def add(self, ids, documents, metadatas):
+                    for doc in documents:
+                        self.docs.append(doc)
+
+                def query(self, query_texts, n_results=3):
+                    return {"documents": [self.docs[:n_results]]}
+
+            self.collection = _DummyCollection()
 
     def add_document(self, doc_id: str, text: str, metadata: dict | None = None) -> None:
         """Add a single document to the tenant collection."""

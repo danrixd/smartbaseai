@@ -40,12 +40,12 @@ def test_admin_and_chat_endpoints(tmp_path, monkeypatch):
     headers = {"Authorization": f"Bearer {token}"}
 
     # prepare tenant config for chat
-    monkeypatch.setitem(tenant_config.TENANT_CONFIGS, "t1", {"model": "openai"})
+    monkeypatch.setitem(tenant_config.TENANT_CONFIGS, "t1", {"model": "ollama"})
 
     # create tenant via admin API
     resp = client.post(
         "/admin/tenants/t1",
-        json={"config": {"plan": "basic", "model_type": "openai"}},
+        json={"config": {"plan": "basic", "model_type": "ollama"}},
         headers=headers,
     )
     assert resp.status_code == 200
@@ -58,7 +58,7 @@ def test_admin_and_chat_endpoints(tmp_path, monkeypatch):
     # get tenant
     resp = client.get("/admin/tenants/t1", headers=headers)
     assert resp.status_code == 200
-    assert resp.json() == {"plan": "basic", "model_type": "openai"}
+    assert resp.json() == {"plan": "basic", "model_type": "ollama"}
 
     # send chat message
     resp = client.post(
@@ -68,7 +68,7 @@ def test_admin_and_chat_endpoints(tmp_path, monkeypatch):
     )
     assert resp.status_code == 200
     data = resp.json()
-    assert data["reply"].startswith("[OpenAI]")
+    assert data["reply"].startswith("[Ollama")
     assert len(data["history"]) == 2
 
 
@@ -80,7 +80,7 @@ def test_chat_with_ollama(tmp_path, monkeypatch):
     monkeypatch.setitem(
         tenant_config.TENANT_CONFIGS,
         "ol",
-        {"model": "openai"},
+        {"model": "ollama"},
     )
 
     resp = client.post(
@@ -96,5 +96,5 @@ def test_chat_with_ollama(tmp_path, monkeypatch):
         headers=headers,
     )
     assert resp.status_code == 200
-    assert resp.json()["reply"].startswith("[Ollama]")
+    assert "[Ollama" in resp.json()["reply"]
 

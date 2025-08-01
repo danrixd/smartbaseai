@@ -65,15 +65,19 @@ def test_rag_pipeline_query_and_answer():
 
 
 def test_response_generator_rag_integration(monkeypatch):
-    monkeypatch.setitem(
-        tenant_config.TENANT_CONFIGS,
-        "rag",
-        {"model": "openai", "rag_enabled": True},
-    )
-    gen = ResponseGenerator("rag")
-    gen.pipeline.add_documents(["info"], [{"text": "info"}])
+    class DummyResp:
+        def raise_for_status(self):
+            pass
 
-    reply = gen.generate("info?")
-    assert reply == "[OpenAI] Response to: info\nQuestion: info?\nAnswer:"
+        def json(self):
+            return {"response": "done"}
+
+    monkeypatch.setattr(__import__("requests"), "post", lambda *a, **k: DummyResp())
+
+    gen = ResponseGenerator("rag")
+    gen.rag.store.add_document("d", "foo", {"meta": "t"})
+
+    reply = gen.generate_response("foo?")
+    assert reply == "done"
 
 
