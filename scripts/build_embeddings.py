@@ -5,7 +5,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
+
+# Ensure project root is on the path when executed directly
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from ingestion.etl_manager import ETLManager
 from ai.embeddings import OpenAIEmbeddings, LocalEmbeddings, HuggingFaceEmbeddings
