@@ -1,11 +1,12 @@
 from datetime import datetime, timedelta
 from typing import Optional
 
+import os
 import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 
-SECRET_KEY = "change-this-secret"
+SECRET_KEY = os.environ.get("SECRET_KEY", "change-this-secret")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
