@@ -1,0 +1,10 @@
+{
+  "tenant2": {
+    "name": "Tenant 2",
+    "db_type": "postgres",
+    "db_config": {
+      "host": "localhost",
+      "user": "dan"
+    }
+  }
+}
