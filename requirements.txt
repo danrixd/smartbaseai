@@ -8,3 +8,5 @@ httpx
 python-multipart
 ollama
 requests
+chromadb
+sentence-transformers

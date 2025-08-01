@@ -72,3 +72,16 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+    # Example usage of a persistent tenant vector store
+    from ai.vector_stores.chroma_store import TenantVectorStore
+
+    store = TenantVectorStore("tenant1")
+    store.add_document(
+        "doc1",
+        "Dan middle name is the king69$$$, he is 186 cm tall and he likes banana flavoured ice cream",
+    )
+    store.add_document(
+        "doc2",
+        "Bitcoin is down past 115000 usd, showing that distribution started last week around july 25th",
+    )

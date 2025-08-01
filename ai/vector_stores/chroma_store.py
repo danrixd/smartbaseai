@@ -1,6 +1,10 @@
-"""In-memory Chroma-like vector store (mocked)."""
+"""Chroma based vector store utilities."""
 
 from typing import Iterable, List, Tuple
+import os
+
+import chromadb
+from chromadb.utils import embedding_functions
 
 
 class ChromaStore:
@@ -27,3 +31,31 @@ class ChromaStore:
         ]
         scored.sort(key=lambda x: x[1])
         return scored[:top_k]
+
+
+class TenantVectorStore:
+    """Persistent vector store instance for a specific tenant."""
+
+    def __init__(self, tenant_id: str, persist_dir: str = "vector_store") -> None:
+        self.tenant_id = tenant_id
+        self.persist_path = os.path.join(persist_dir, tenant_id)
+        os.makedirs(self.persist_path, exist_ok=True)
+
+        self.client = chromadb.PersistentClient(path=self.persist_path)
+
+        self.embedding_fn = embedding_functions.SentenceTransformerEmbeddingFunction(
+            model_name="sentence-transformers/all-MiniLM-L6-v2"
+        )
+
+        self.collection = self.client.get_or_create_collection(
+            name="documents",
+            embedding_function=self.embedding_fn,
+        )
+
+    def add_document(self, doc_id: str, text: str, metadata: dict | None = None) -> None:
+        """Add a single document to the tenant collection."""
+        self.collection.add(ids=[doc_id], documents=[text], metadatas=[metadata or {}])
+
+    def query(self, text: str, n_results: int = 3) -> dict:
+        """Query the collection for similar documents."""
+        return self.collection.query(query_texts=[text], n_results=n_results)
