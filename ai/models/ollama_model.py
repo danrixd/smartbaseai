@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from typing import Any
+import json
 
 try:  # requests may not be installed in all environments
     import requests
@@ -22,13 +23,26 @@ class OllamaModel:
         """Return a response from Ollama or a fallback message."""
         if requests is not None:
             url = f"{self.base_url}/api/generate"
-            payload = {"model": self.model_name, "prompt": prompt}
+            payload = {"model": self.model_name, "prompt": prompt, "stream": False}
             try:
                 r = requests.post(url, json=payload, timeout=10)
                 r.raise_for_status()
-                data = r.json()
-                if isinstance(data, dict) and "response" in data:
-                    return str(data["response"]).strip()
+                try:
+                    data = r.json()
+                    if isinstance(data, dict) and "response" in data:
+                        return str(data["response"]).strip()
+                except ValueError:
+                    text = ""
+                    for line in r.text.splitlines():
+                        try:
+                            obj = json.loads(line)
+                        except Exception:
+                            continue
+                        text += obj.get("response", "")
+                        if obj.get("done"):
+                            break
+                    if text:
+                        return text.strip()
             except Exception:  # pragma: no cover - network failures or missing dep
                 pass
         return f"[Ollama] Response to: {prompt}"
