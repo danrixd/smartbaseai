@@ -1,7 +1,7 @@
 import pytest
 
 from ai.model_manager import ModelManager
-from ai.models import OpenAIModel, LocalLLAMAModel, AnthropicModel
+from ai.models import OpenAIModel, LocalLLAMAModel, AnthropicModel, OllamaModel
 from chatbot.response_generator import ResponseGenerator
 from ai.rag_pipeline import RAGPipeline
 from config import tenant_config
@@ -24,6 +24,16 @@ def test_select_specific_model(monkeypatch):
     manager = ModelManager("t3")
     assert isinstance(manager.model, AnthropicModel)
     assert manager.generate("yo") == "[Anthropic] Response to: yo"
+
+    # using ollama should not raise even if server isn't running
+    monkeypatch.setitem(
+        tenant_config.TENANT_CONFIGS,
+        "t4",
+        {"model": "ollama", "model_config": {"model_name": "llama3"}},
+    )
+    manager = ModelManager("t4")
+    assert isinstance(manager.model, OllamaModel)
+    assert manager.generate("sup").startswith("[Ollama]")
 
 
 def test_invalid_model(monkeypatch):

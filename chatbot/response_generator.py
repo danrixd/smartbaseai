@@ -29,11 +29,28 @@ class ResponseGenerator:
         "pinecone": PineconeStore,
     }
 
-    def __init__(self, tenant_id: str) -> None:
+    def __init__(
+        self,
+        tenant_id: str | None = None,
+        model_type: str | None = None,
+        model_name: str | None = None,
+    ) -> None:
         self.tenant_id = tenant_id
-        self.config = TenantConfig.get(tenant_id)
+        if tenant_id is not None and model_type is None:
+            self.config = TenantConfig.get(tenant_id)
+        else:
+            # minimal config when specifying model explicitly
+            self.config = {
+                "model": model_type or "openai",
+                "model_config": {"model_name": model_name} if model_name else {},
+            }
+
         self.use_rag = self.config.get("rag_enabled", False)
-        self.manager = ModelManager(tenant_id)
+        self.manager = ModelManager(
+            tenant_id or "explicit",
+            model_type=self.config.get("model"),
+            model_config=self.config.get("model_config"),
+        )
         if self.use_rag:
             embedder_name = self.config.get("embedder", "local")
             vector_name = self.config.get("vector_store", "faiss")
@@ -71,3 +88,12 @@ class ResponseGenerator:
         else:
             full_prompt = prompt
         return self.manager.generate(full_prompt, **kwargs)
+
+    # Backwards compatible helper used by API layer
+    def generate_response(
+        self,
+        prompt: str,
+        history: Iterable[Mapping[str, str]] | None = None,
+        **kwargs,
+    ) -> str:
+        return self.generate(prompt, history, **kwargs)

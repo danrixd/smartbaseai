@@ -16,6 +16,7 @@ def setup_client(tmp_path, monkeypatch):
     tm = tenant_manager.TenantManager()
     monkeypatch.setattr(routes_admin, "manager", tm)
     monkeypatch.setattr(routes_chat, "conversation_manager", ConversationManager())
+    monkeypatch.setattr(routes_chat, "tenant_manager", tm)
     return TestClient(app)
 
 
@@ -42,7 +43,11 @@ def test_admin_and_chat_endpoints(tmp_path, monkeypatch):
     monkeypatch.setitem(tenant_config.TENANT_CONFIGS, "t1", {"model": "openai"})
 
     # create tenant via admin API
-    resp = client.post("/admin/tenants/t1", json={"config": {"plan": "basic"}}, headers=headers)
+    resp = client.post(
+        "/admin/tenants/t1",
+        json={"config": {"plan": "basic", "model_type": "openai"}},
+        headers=headers,
+    )
     assert resp.status_code == 200
 
     # list tenants
@@ -53,7 +58,7 @@ def test_admin_and_chat_endpoints(tmp_path, monkeypatch):
     # get tenant
     resp = client.get("/admin/tenants/t1", headers=headers)
     assert resp.status_code == 200
-    assert resp.json() == {"plan": "basic"}
+    assert resp.json() == {"plan": "basic", "model_type": "openai"}
 
     # send chat message
     resp = client.post(
@@ -65,4 +70,31 @@ def test_admin_and_chat_endpoints(tmp_path, monkeypatch):
     data = resp.json()
     assert data["reply"].startswith("[OpenAI]")
     assert len(data["history"]) == 2
+
+
+def test_chat_with_ollama(tmp_path, monkeypatch):
+    client = setup_client(tmp_path, monkeypatch)
+    token = get_token(client)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    monkeypatch.setitem(
+        tenant_config.TENANT_CONFIGS,
+        "ol",
+        {"model": "openai"},
+    )
+
+    resp = client.post(
+        "/admin/tenants/ol",
+        json={"config": {"model_type": "ollama", "model_name": "llama3"}},
+        headers=headers,
+    )
+    assert resp.status_code == 200
+
+    resp = client.post(
+        "/chat/message",
+        json={"session_id": "s1", "tenant_id": "ol", "message": "hi"},
+        headers=headers,
+    )
+    assert resp.status_code == 200
+    assert resp.json()["reply"].startswith("[Ollama]")
 

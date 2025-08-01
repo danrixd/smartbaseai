@@ -50,6 +50,7 @@ npm run dev
 ```bash
 python scripts/setup_tenant.py tenant1 --name "Tenant 1" --db-type postgres \
     --db-config '{"host": "localhost", "user": "app"}'
+    --model-type ollama --model-name llama3
 ```
 
 ### Build embeddings
