@@ -25,7 +25,10 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    uvicorn.run(app, host=args.host, port=args.port, reload=args.reload)
+    if args.reload:
+        uvicorn.run("api.app:app", host=args.host, port=args.port, reload=True)
+    else:
+        uvicorn.run(app, host=args.host, port=args.port)
 
 
 if __name__ == "__main__":
