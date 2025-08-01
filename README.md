@@ -12,3 +12,11 @@ cp .env.example .env
 
 Edit the file and set `SECRET_KEY` to a secure value that will be used for signing JWT tokens.
 
+## Setup
+
+Install dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
