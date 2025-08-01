@@ -4,6 +4,11 @@ TENANT_CONFIGS = {
     "default": {
         "name": "Default Tenant",
         "plan": "basic",
+        # retrieval augmented generation disabled by default
+        "rag_enabled": False,
+        # default embedder and vector store names
+        "embedder": "local",
+        "vector_store": "faiss",
     }
 }
 
