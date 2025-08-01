@@ -4,8 +4,13 @@
 from __future__ import annotations
 
 import argparse
+import sys
+from pathlib import Path
 
 import uvicorn
+
+# Add project root to Python path when executed directly
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from api.app import app
 
