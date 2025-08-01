@@ -13,14 +13,24 @@ class ModelManager:
         "anthropic": AnthropicModel,
     }
 
-    def __init__(self, tenant_id: str) -> None:
+    def __init__(
+        self,
+        tenant_id: str,
+        model_type: str | None = None,
+        model_config: dict | None = None,
+    ) -> None:
         self.tenant_id = tenant_id
         config = TenantConfig.get(tenant_id)
-        model_name = config.get("model", "openai")
-        model_cls = self.MODEL_MAP.get(model_name)
+        name = model_type or config.get("model", "openai")
+        model_cls = self.MODEL_MAP.get(name)
         if model_cls is None:
-            raise ValueError(f"Unsupported model: {model_name}")
-        self.model = model_cls(**config.get("model_config", {}))
+            raise ValueError(f"Unsupported model: {name}")
+        final_cfg = dict(config.get("model_config", {}))
+        if model_config:
+            for key, value in model_config.items():
+                if key != "model_name":
+                    final_cfg[key] = value
+        self.model = model_cls(**final_cfg)
 
     def generate(self, prompt: str, **kwargs) -> str:
         """Delegate text generation to the underlying model."""
