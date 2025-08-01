@@ -71,3 +71,30 @@ def test_admin_and_chat_endpoints(tmp_path, monkeypatch):
     assert data["reply"].startswith("[OpenAI]")
     assert len(data["history"]) == 2
 
+
+def test_chat_with_ollama(tmp_path, monkeypatch):
+    client = setup_client(tmp_path, monkeypatch)
+    token = get_token(client)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    monkeypatch.setitem(
+        tenant_config.TENANT_CONFIGS,
+        "ol",
+        {"model": "openai"},
+    )
+
+    resp = client.post(
+        "/admin/tenants/ol",
+        json={"config": {"model_type": "ollama", "model_name": "llama3"}},
+        headers=headers,
+    )
+    assert resp.status_code == 200
+
+    resp = client.post(
+        "/chat/message",
+        json={"session_id": "s1", "tenant_id": "ol", "message": "hi"},
+        headers=headers,
+    )
+    assert resp.status_code == 200
+    assert resp.json()["reply"].startswith("[Ollama]")
+

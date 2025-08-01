@@ -27,6 +27,15 @@ def main() -> None:
         default="{}",
         help="JSON string containing DB connector configuration",
     )
+    parser.add_argument(
+        "--model-type",
+        default="openai",
+        help="Model backend type (openai, local-llama, ollama, etc.)",
+    )
+    parser.add_argument(
+        "--model-name",
+        help="Optional name for the selected model",
+    )
     args = parser.parse_args()
 
     manager = TenantManager()
@@ -39,7 +48,10 @@ def main() -> None:
         "name": args.name or args.tenant_id,
         "db_type": args.db_type,
         "db_config": db_config,
+        "model_type": args.model_type,
     }
+    if args.model_name:
+        config["model_name"] = args.model_name
     manager.create(args.tenant_id, config)
     print(f"Tenant '{args.tenant_id}' created")
 

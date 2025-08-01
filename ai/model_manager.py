@@ -1,7 +1,12 @@
 """Utility for selecting models based on tenant configuration."""
 
 from config.tenant_config import TenantConfig
-from .models import OpenAIModel, LocalLLAMAModel, AnthropicModel
+from .models import (
+    OpenAIModel,
+    LocalLLAMAModel,
+    AnthropicModel,
+    OllamaModel,
+)
 
 
 class ModelManager:
@@ -11,6 +16,7 @@ class ModelManager:
         "openai": OpenAIModel,
         "local-llama": LocalLLAMAModel,
         "anthropic": AnthropicModel,
+        "ollama": OllamaModel,
     }
 
     def __init__(
@@ -27,9 +33,9 @@ class ModelManager:
             raise ValueError(f"Unsupported model: {name}")
         final_cfg = dict(config.get("model_config", {}))
         if model_config:
-            for key, value in model_config.items():
-                if key != "model_name":
-                    final_cfg[key] = value
+            final_cfg.update(model_config)
+        if name != "ollama":
+            final_cfg.pop("model_name", None)
         self.model = model_cls(**final_cfg)
 
     def generate(self, prompt: str, **kwargs) -> str:
