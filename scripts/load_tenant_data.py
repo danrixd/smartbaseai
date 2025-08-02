@@ -1,3 +1,12 @@
+"""Utility script to seed tenant2's vector store with example data."""
+
+from pathlib import Path
+import sys
+
+# Ensure the project root is on the Python path so ``ai`` imports work when
+# executing this file directly via ``python scripts/load_tenant_data.py``.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 from ai.vector_stores.chroma_store import TenantVectorStore
 
 def load_tenant2_data():
