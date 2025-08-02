@@ -106,15 +106,16 @@ class TenantVectorStore:
             all_docs = self.collection.get(include=["documents"]).get("documents", [])
         except Exception:
             all_docs = getattr(self.collection, "docs", [])
-        return [doc for doc in all_docs if query in doc]
+        query_lower = query.lower()
+        return [doc for doc in all_docs if query_lower in doc.lower()]
 
-    def hybrid_query(self, query: str, n_results: int = 3) -> list[str]:
+    def hybrid_query(self, query: str, n_results: int = 3) -> dict:
         """Combine semantic and keyword search results."""
         keyword_results = self.keyword_search(query)
-        semantic = self.query(query, n_results).get("documents", [[]])
-        if semantic and isinstance(semantic[0], list):
-            semantic = semantic[0]
-        combined = list(dict.fromkeys(keyword_results + semantic))
-        return combined[:n_results]
+        semantic_docs = self.query(query, n_results).get("documents", [[]])
+        if semantic_docs and isinstance(semantic_docs[0], list):
+            semantic_docs = semantic_docs[0]
+        combined = list(dict.fromkeys(keyword_results + semantic_docs))
+        return {"documents": [combined[:n_results]]}
 
 
