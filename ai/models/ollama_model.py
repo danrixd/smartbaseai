@@ -15,7 +15,7 @@ except Exception:  # pragma: no cover - dependency missing
 class OllamaModel:
     """Generate text using an Ollama model if available."""
 
-    def __init__(self, model_name: str = "llama3", base_url: str = "http://localhost:11434") -> None:
+    def __init__(self, model_name: str = "llama3.2", base_url: str = "http://localhost:11434") -> None:
         self.model_name = model_name
         self.base_url = base_url.rstrip("/")
 
