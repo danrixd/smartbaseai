@@ -2,10 +2,17 @@
 
 from __future__ import annotations
 
+import re
 import requests
 from typing import Iterable, Mapping
 
 from ai.rag_pipeline import RAGPipeline
+from db.query_engine import exact_lookup
+
+
+def looks_like_exact_lookup(message: str) -> bool:
+    """Return True if the message contains an ISO date-time pattern."""
+    return bool(re.search(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}", message))
 
 
 class OllamaModel:
@@ -38,6 +45,25 @@ class ResponseGenerator:
         else:
             raise ValueError(f"Unsupported model type: {model_type}")
 
-    def generate_response(self, user_message: str, history: Iterable[Mapping[str, str]] | None = None) -> str:
+    def query_rag(self, user_message: str, history: Iterable[Mapping[str, str]] | None = None) -> str:
+        """Fallback to the RAG pipeline and language model."""
         prompt = self.rag.augment_prompt(user_message, history)
         return self.model.generate(prompt)
+
+    def generate_response(self, user_message: str, history: Iterable[Mapping[str, str]] | None = None) -> str:
+        """Generate a response handling exact lookup or RAG fallback."""
+        if looks_like_exact_lookup(user_message):
+            date_match = re.search(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}", user_message)
+            if date_match:
+                date_str = date_match.group(0)
+                row = exact_lookup(date_str, self.tenant_id)
+                if row:
+                    return (
+                        f"Close value for {date_str} is {row['close']} "
+                        f"(Open: {row['open']}, High: {row['high']}, "
+                        f"Low: {row['low']}, Volume: {row['volume']})"
+                    )
+                else:
+                    return f"No data found for {date_str}."
+
+        return self.query_rag(user_message, history)
