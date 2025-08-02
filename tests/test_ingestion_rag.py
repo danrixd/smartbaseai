@@ -81,3 +81,26 @@ def test_response_generator_rag_integration(monkeypatch):
     assert reply == "done"
 
 
+def test_response_generator_includes_retrieved_context(monkeypatch):
+    captured = {}
+
+    class DummyResp:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"response": "ok"}
+
+    def fake_post(url, json):
+        captured["prompt"] = json["prompt"]
+        return DummyResp()
+
+    monkeypatch.setattr(__import__("requests"), "post", fake_post)
+
+    gen = ResponseGenerator("ctx")
+    gen.rag.store.add_document("d", "Dan is 186 cm tall", {"source": "t"})
+
+    gen.generate_response("How tall is Dan?")
+    assert "186 cm" in captured["prompt"]
+
+

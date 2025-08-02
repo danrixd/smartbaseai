@@ -43,6 +43,10 @@ def main() -> None:
     parser.add_argument(
         "--output", type=Path, required=True, help="File to write embeddings to"
     )
+    parser.add_argument(
+        "--tenant-id",
+        help="Optional tenant identifier to populate its vector store",
+    )
     args = parser.parse_args()
 
     try:
@@ -69,21 +73,14 @@ def main() -> None:
 
     print(f"Wrote {len(output_data)} embeddings to {args.output}")
 
+    if args.tenant_id:
+        from ai.vector_stores.chroma_store import TenantVectorStore
+
+        store = TenantVectorStore(args.tenant_id)
+        for idx, text in enumerate(texts):
+            doc_id = metadata[idx].get("doc_id", f"doc{idx}")
+            store.add_document(doc_id, text, metadata[idx])
+
 
 if __name__ == "__main__":
     main()
-
-    # Example usage of a persistent tenant vector store
-    from ai.vector_stores.chroma_store import TenantVectorStore
-
-    store = TenantVectorStore("tenant1")
-    store.add_document(
-        "doc1",
-        "Dan middle name is the king69$$$, he is 186 cm tall and he likes banana flavoured ice cream",
-        {"source": "example"},
-    )
-    store.add_document(
-        "doc2",
-        "Bitcoin is down past 115000 usd, showing that distribution started last week around july 25th",
-        {"source": "example"},
-    )
