@@ -10,6 +10,11 @@ except Exception:  # pragma: no cover - optional dependency
     chromadb = None  # type: ignore
     embedding_functions = None  # type: ignore
 
+try:
+    import torch  # type: ignore
+except Exception:  # pragma: no cover - optional dependency
+    torch = None  # type: ignore
+
 
 class ChromaStore:
     """Simplified Chroma store maintaining vectors in memory."""
@@ -48,8 +53,10 @@ class TenantVectorStore:
         if chromadb is not None:
             self.client = chromadb.PersistentClient(path=self.persist_path)
 
+            device = "cuda" if torch and torch.cuda.is_available() else "cpu"
             self.embedding_fn = embedding_functions.SentenceTransformerEmbeddingFunction(
-                model_name="sentence-transformers/all-MiniLM-L6-v2"
+                model_name="sentence-transformers/all-MiniLM-L6-v2",
+                device=device,
             )
 
             self.collection = self.client.get_or_create_collection(
