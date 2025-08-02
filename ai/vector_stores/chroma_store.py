@@ -77,6 +77,9 @@ class TenantVectorStore:
                 def query(self, query_texts, n_results=3):
                     return {"documents": [self.docs[:n_results]]}
 
+                def get(self, include=None):
+                    return {"documents": list(self.docs)}
+
             self.collection = _DummyCollection()
 
     def add_document(self, doc_id: str, text: str, metadata: dict | None = None) -> None:
@@ -96,5 +99,22 @@ class TenantVectorStore:
             return {"documents": [documents]}
         except Exception:
             return {"documents": [[]]}
+
+    def keyword_search(self, query: str) -> list[str]:
+        """Perform exact keyword match search on stored documents."""
+        try:
+            all_docs = self.collection.get(include=["documents"]).get("documents", [])
+        except Exception:
+            all_docs = getattr(self.collection, "docs", [])
+        return [doc for doc in all_docs if query in doc]
+
+    def hybrid_query(self, query: str, n_results: int = 3) -> list[str]:
+        """Combine semantic and keyword search results."""
+        keyword_results = self.keyword_search(query)
+        semantic = self.query(query, n_results).get("documents", [[]])
+        if semantic and isinstance(semantic[0], list):
+            semantic = semantic[0]
+        combined = list(dict.fromkeys(keyword_results + semantic))
+        return combined[:n_results]
 
 
