@@ -1,99 +1,43 @@
-"""Generate final chatbot responses using the configured AI model."""
+"""Generate responses using a retrieval augmented prompt."""
 
 from __future__ import annotations
 
+import requests
 from typing import Iterable, Mapping
 
-from ai import ModelManager, RAGPipeline
-from ai.embeddings import (
-    LocalEmbeddings,
-    OpenAIEmbeddings,
-    HuggingFaceEmbeddings,
-)
-from ai.vector_stores import FaissStore, ChromaStore, PineconeStore
-from config.tenant_config import TenantConfig
+from ai.rag_pipeline import RAGPipeline
+
+
+class OllamaModel:
+    """Wrapper for calling a local Ollama server."""
+
+    def __init__(self, model_name: str = "llama3.2", base_url: str = "http://localhost:11434") -> None:
+        self.model_name = model_name
+        self.base_url = base_url.rstrip("/")
+
+    def generate(self, prompt: str) -> str:
+        url = f"{self.base_url}/api/generate"
+        payload = {"model": self.model_name, "prompt": prompt, "stream": False}
+        try:
+            r = requests.post(url, json=payload)
+            r.raise_for_status()
+            data = r.json()
+            return data.get("response", "").strip()
+        except Exception as e:  # pragma: no cover - network issues
+            return f"[Ollama Error] {e}"
 
 
 class ResponseGenerator:
-    """Wrapper around :class:`ModelManager` for producing responses."""
+    """Combine RAG retrieval and model generation."""
 
-    EMBEDDER_MAP = {
-        "local": LocalEmbeddings,
-        "openai": OpenAIEmbeddings,
-        "huggingface": HuggingFaceEmbeddings,
-    }
-
-    VECTOR_STORE_MAP = {
-        "faiss": FaissStore,
-        "chroma": ChromaStore,
-        "pinecone": PineconeStore,
-    }
-
-    def __init__(
-        self,
-        tenant_id: str | None = None,
-        model_type: str | None = None,
-        model_name: str | None = None,
-    ) -> None:
+    def __init__(self, tenant_id: str, model_type: str = "ollama", model_name: str = "llama3.2") -> None:
         self.tenant_id = tenant_id
-        if tenant_id is not None and model_type is None:
-            self.config = TenantConfig.get(tenant_id)
+        self.rag = RAGPipeline(tenant_id=tenant_id)
+        if model_type == "ollama":
+            self.model = OllamaModel(model_name=model_name)
         else:
-            # minimal config when specifying model explicitly
-            self.config = {
-                "model": model_type or "openai",
-                "model_config": {"model_name": model_name} if model_name else {},
-            }
+            raise ValueError(f"Unsupported model type: {model_type}")
 
-        self.use_rag = self.config.get("rag_enabled", False)
-        self.manager = ModelManager(
-            tenant_id or "explicit",
-            model_type=self.config.get("model"),
-            model_config=self.config.get("model_config"),
-        )
-        if self.use_rag:
-            embedder_name = self.config.get("embedder", "local")
-            vector_name = self.config.get("vector_store", "faiss")
-            embedder_cls = self.EMBEDDER_MAP.get(embedder_name, LocalEmbeddings)
-            vector_cls = self.VECTOR_STORE_MAP.get(vector_name, FaissStore)
-            self.pipeline = RAGPipeline(
-                embedder=embedder_cls(),
-                vector_store=vector_cls(),
-                model=self.manager.model,
-            )
-        else:
-            self.pipeline = None
-
-    def _format_history(self, history: Iterable[Mapping[str, str]]) -> str:
-        lines = []
-        for item in history:
-            role = item.get("role", "user")
-            text = item.get("text", "")
-            lines.append(f"{role.capitalize()}: {text}")
-        return "\n".join(lines)
-
-    def generate(
-        self,
-        prompt: str,
-        history: Iterable[Mapping[str, str]] | None = None,
-        **kwargs,
-    ) -> str:
-        """Generate a response using conversation history and prompt."""
-        if self.use_rag and self.pipeline is not None:
-            return self.pipeline.answer(prompt, **kwargs)
-
-        context = self._format_history(history or [])
-        if context:
-            full_prompt = f"{context}\nUser: {prompt}\nAssistant:"
-        else:
-            full_prompt = prompt
-        return self.manager.generate(full_prompt, **kwargs)
-
-    # Backwards compatible helper used by API layer
-    def generate_response(
-        self,
-        prompt: str,
-        history: Iterable[Mapping[str, str]] | None = None,
-        **kwargs,
-    ) -> str:
-        return self.generate(prompt, history, **kwargs)
+    def generate_response(self, user_message: str, history: Iterable[Mapping[str, str]] | None = None) -> str:
+        prompt = self.rag.augment_prompt(user_message, history)
+        return self.model.generate(prompt)

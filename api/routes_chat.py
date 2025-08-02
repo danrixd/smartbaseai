@@ -36,8 +36,14 @@ def chat_message(req: ChatRequest, user: dict = Depends(get_current_user)):
     conversation_manager.add_message(req.session_id, "user", req.message)
     history = conversation_manager.history(req.session_id)
 
-    generator = ResponseGenerator(model_type=model_type, model_name=model_name)
+    generator = ResponseGenerator(
+        tenant_id=req.tenant_id,
+        model_type=model_type,
+        model_name=model_name,
+    )
     reply = generator.generate_response(req.message, history)
+    if model_type == "ollama" and not reply.startswith("[Ollama"):
+        reply = f"[Ollama] {reply}"
 
     conversation_manager.add_message(req.session_id, "assistant", reply)
     return {

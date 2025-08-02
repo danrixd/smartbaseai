@@ -3,7 +3,6 @@ import pytest
 from ai.model_manager import ModelManager
 from ai.models import OpenAIModel, LocalLLAMAModel, AnthropicModel, OllamaModel
 from chatbot.response_generator import ResponseGenerator
-from ai.rag_pipeline import RAGPipeline
 from config import tenant_config
 
 
@@ -42,23 +41,19 @@ def test_invalid_model(monkeypatch):
         ModelManager("bad")
 
 
-def test_response_generator_no_rag(monkeypatch):
-    monkeypatch.setitem(tenant_config.TENANT_CONFIGS, "g1", {"model": "openai"})
-    gen = ResponseGenerator("g1")
-    assert gen.pipeline is None
-    reply = gen.generate("hello", [])
-    assert reply.startswith("[OpenAI]")
 
+def test_response_generator_with_history(monkeypatch):
+    class DummyResp:
+        def raise_for_status(self):
+            pass
 
-def test_response_generator_with_rag(monkeypatch):
-    monkeypatch.setitem(
-        tenant_config.TENANT_CONFIGS,
-        "g2",
-        {"model": "openai", "rag_enabled": True, "embedder": "local", "vector_store": "faiss"},
-    )
-    gen = ResponseGenerator("g2")
-    assert isinstance(gen.pipeline, RAGPipeline)
-    gen.pipeline.add_documents(["context"], [{"text": "context"}])
-    reply = gen.generate("what?")
-    expected = "[OpenAI] Response to: context\nQuestion: what?\nAnswer:"
-    assert reply == expected
+        def json(self):
+            return {"response": "ok"}
+
+    monkeypatch.setattr(__import__("requests"), "post", lambda *a, **k: DummyResp())
+
+    gen = ResponseGenerator("t1")
+    gen.rag.store.add_document("d1", "info", {"source": "test"})
+
+    reply = gen.generate_response("info?", [{"role": "user", "text": "hi"}])
+    assert reply == "ok"
