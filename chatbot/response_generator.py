@@ -9,9 +9,9 @@ The :class:`ResponseGenerator` orchestrates three sources of information:
 Each source is handled by a dedicated helper method which keeps the logic
 modular and makes it easy to plug additional data providers in the future.
 
-The final prompt sent to the language model always contains three sections in
-the following order: conversation history, structured data and RAG context.
-If both structured and RAG lookups fail, ``"אין מידע"`` is returned.
+The final prompt sent to the language model contains conversation history and a
+single consolidated context block derived from the DB and RAG sources. If both
+lookups fail, ``"אין מידע"`` is returned.
 """
 
 from __future__ import annotations
@@ -74,18 +74,28 @@ class ResponseGenerator:
             return ""
         return "\n".join(f"{m['role']}: {m['text']}" for m in history)
 
+    @staticmethod
+    def _merge_sources(db_text: str, rag_text: str) -> str:
+        """Combine structured DB data with RAG context.
+
+        DB information is preferred and RAG is added as supplemental context
+        when available.
+        """
+
+        if db_text and rag_text:
+            return f"{db_text}\n\nAdditional context:\n{rag_text}"
+        return db_text or rag_text
+
     def _build_prompt(
         self,
         user_message: str,
         history: Iterable[Mapping[str, str]] | None,
-        db_text: str,
-        rag_text: str,
+        context: str,
     ) -> str:
         history_text = self._format_history(history)
         return (
             "Conversation:\n" + history_text + "\n\n" +
-            "Structured data:\n" + (db_text or "") + "\n\n" +
-            "Context:\n" + (rag_text or "") + "\n\n" +
+            "Context:\n" + context + "\n\n" +
             f"User: {user_message}\nAssistant:"
         )
 
@@ -102,11 +112,12 @@ class ResponseGenerator:
 
         db_text = self._lookup_db(user_message)
         rag_text = self._search_rag(user_message)
+        context = self._merge_sources(db_text, rag_text)
 
-        if not db_text and not rag_text:
+        if not context:
             return "אין מידע"
 
-        prompt = self._build_prompt(user_message, history, db_text, rag_text)
+        prompt = self._build_prompt(user_message, history, context)
         return self.model.generate(prompt)
 
 

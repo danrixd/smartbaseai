@@ -36,7 +36,8 @@ def test_db_and_rag_combined(monkeypatch):
     rg = _build_rg(monkeypatch, rag_text="context")
     prompt = rg.generate_response(f"stats at {DATE_STR}?", [{"role": "user", "text": "hi"}])
     assert "Close value for" in prompt  # DB data included
-    assert "context" in prompt  # RAG context included
+    assert "Additional context" in prompt  # RAG context fused in
+    assert "context" in prompt  # RAG text included
     assert "user: hi".lower() in prompt.lower()
 
 
@@ -44,7 +45,7 @@ def test_db_only(monkeypatch):
     rg = _build_rg(monkeypatch, rag_text="")
     prompt = rg.generate_response(f"stats at {DATE_STR}?")
     assert "Close value for" in prompt
-    assert "Context:\n" in prompt and "context" not in prompt
+    assert "Additional context" not in prompt
 
 
 def test_rag_only(monkeypatch):
@@ -52,6 +53,7 @@ def test_rag_only(monkeypatch):
     prompt = rg.generate_response("general question")
     assert "rag info" in prompt
     assert "Close value" not in prompt
+    assert "Additional context" not in prompt
 
 
 def test_no_results(monkeypatch):
