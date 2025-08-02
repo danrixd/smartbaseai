@@ -42,9 +42,11 @@ class RAGPipeline:
     def retrieve_context(self, query: str, top_k: int = 3) -> str:
         """Retrieve contextual documents for a query."""
         if self.store is not None:
-            results = self.store.query(query, n_results=top_k)
-            docs = results.get("documents", [[]])[0]
-            return "\n".join(docs)
+            results = self.store.hybrid_query(query, n_results=top_k)
+            documents = results.get("documents", [[]])
+            if documents and isinstance(documents[0], list):
+                documents = documents[0]
+            return "\n".join(documents)
 
         query_emb = self.embedder.embed([query])[0]
         results = self.vector_store.query(query_emb, top_k)
