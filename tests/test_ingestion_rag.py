@@ -91,8 +91,9 @@ def test_response_generator_includes_retrieved_context(monkeypatch):
         def json(self):
             return {"response": "ok"}
 
-    def fake_post(url, json):
-        captured["prompt"] = json["prompt"]
+    def fake_post(url, *_, **kwargs):
+        payload = kwargs.get("json", {})
+        captured["prompt"] = payload.get("prompt", "")
         return DummyResp()
 
     monkeypatch.setattr(__import__("requests"), "post", fake_post)

@@ -31,19 +31,21 @@ def test_exact_lookup_function():
     assert row["close"] == 11.0
 
 
-def test_response_generator_exact_and_rag():
-    rg = ResponseGenerator(TENANT)
+def test_response_generator_exact_lookup(monkeypatch):
+    """Ensure DB rows are incorporated in the generated prompt."""
+    rg = ResponseGenerator(TENANT, model_type="openai")
 
-    def fake_query_rag(self, user_message, history=None):
-        return "RAG"
-
-    # Replace query_rag to avoid actual model calls
-    rg.query_rag = fake_query_rag.__get__(rg, ResponseGenerator)
+    # Avoid RAG context and echo the prompt for inspection
+    monkeypatch.setattr(rg, "_search_rag", lambda message: "")
+    monkeypatch.setattr(rg.model, "generate", lambda prompt: prompt)
 
     exact_msg = f"What is the close value for date: {DATE_STR}?"
-    response = rg.generate_response(exact_msg)
-    assert "Close value for" in response
+    prompt = rg.generate_response(exact_msg, [{"role": "user", "text": "hi"}])
+    assert "Close value for" in prompt
+    assert "user: hi".lower() in prompt.lower()
 
+    # When no date is present the DB section should be empty
     general_msg = "What happened on 2023-07-09?"
-    assert rg.generate_response(general_msg) == "RAG"
+    prompt = rg.generate_response(general_msg)
+    assert "Close value" not in prompt
 

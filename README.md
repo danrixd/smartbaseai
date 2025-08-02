@@ -104,3 +104,12 @@ Run all unit tests with:
 pytest -q
 ```
 
+## Extending the response generator
+
+The `ResponseGenerator` combines conversation history, structured data from a
+tenant database and unstructured context from the vector store. Additional data
+sources can be integrated by implementing new helper methods that fetch and
+format their results before calling the language model. Each source should be
+encapsulated in its own method and added to the prompt in
+`chatbot/response_generator.py`.
+
