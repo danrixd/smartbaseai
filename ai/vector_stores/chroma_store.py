@@ -86,14 +86,15 @@ class TenantVectorStore:
         self.collection.add(ids=[doc_id], documents=[text], metadatas=[metadata])
 
     def query(self, text: str, n_results: int = 3) -> dict:
-        """Query the collection for similar documents.
-
-        Chroma can raise an ``InternalError`` when a persistent collection has
-        no stored segments yet. In that case (or for any other failure) we
-        return an empty result so callers can handle the absence of context
-        gracefully instead of failing the request.
-        """
+        """Query the collection for similar documents (Chroma format)."""
         try:
-            return self.collection.query(query_texts=[text], n_results=n_results)
+            results = self.collection.query(query_texts=[text], n_results=n_results)
+            documents = results.get("documents", [[]])
+            if documents and isinstance(documents[0], list):
+                documents = documents[0]
+            # נחזיר עדיין dict, כדי לשמור תאימות
+            return {"documents": [documents]}
         except Exception:
             return {"documents": [[]]}
+
+
