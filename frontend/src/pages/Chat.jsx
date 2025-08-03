@@ -56,7 +56,7 @@ export default function Chat() {
     setHistory((prev) => [...prev, { sender: 'user', message: msg }]);
 
     try {
-      const res = await api.post('/chat/message', {
+      const res = await api.post("/chat/message", {
         session_id: sessionId,
         tenant_id: tenant,
         message: msg,
@@ -103,7 +103,7 @@ export default function Chat() {
                       className="example-btn bg-white hover:bg-gray-100 border border-gray-200 rounded-lg p-3 text-sm text-left"
                       onClick={() => setInput(ex)}
                     >
-                      "{ex}"
+                      {`"${ex}"`}
                     </button>
                   ))}
                 </div>
