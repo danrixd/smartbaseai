@@ -88,6 +88,17 @@ def test_admin_chat_and_history(tmp_path, monkeypatch):
     assert resp.status_code == 200
     assert len(resp.json()["history"]) == 2
 
+    resp = client.get("/chat/sessions", headers=headers)
+    assert resp.status_code == 200
+    assert resp.json()["sessions"][0]["id"] == "s1"
+
+    resp = client.delete("/chat/session/s1", headers=headers)
+    assert resp.status_code == 200
+
+    resp = client.get("/chat/sessions", headers=headers)
+    assert resp.status_code == 200
+    assert resp.json()["sessions"] == []
+
 
 def test_user_and_file_endpoints(tmp_path, monkeypatch):
     client = setup_client(tmp_path, monkeypatch)

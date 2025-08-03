@@ -71,3 +71,17 @@ def chat_message(req: ChatRequest, user=Depends(get_current_user)):
 def chat_history(session_id: str, user=Depends(get_current_user)):
     """Return chat history for a session."""
     return {"history": conversation_repository.get_history(session_id, user["username"])}
+
+
+@router.get("/sessions")
+def chat_sessions(user=Depends(get_current_user)):
+    """Return a list of chat sessions for the current user."""
+    return {"sessions": conversation_repository.list_sessions(user["username"])}
+
+
+@router.delete("/session/{session_id}")
+def delete_chat_session(session_id: str, user=Depends(get_current_user)):
+    """Delete a chat session and its history."""
+    conversation_repository.delete_session(session_id, user["username"])
+    audit_log_repository.log_action(user["username"], "delete_session", session_id)
+    return {"status": "deleted"}

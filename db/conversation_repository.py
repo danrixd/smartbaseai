@@ -53,3 +53,44 @@ def get_history(session_id: str, username: str) -> List[Dict]:
     for sender, message, created_at in rows:
         history.append({"sender": sender, "message": message, "created_at": created_at})
     return history
+
+
+def list_sessions(username: str) -> List[Dict]:
+    """Return a list of chat sessions for a user with the first message as the title."""
+    init_db()
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT session_id, MIN(id) AS first_id
+        FROM conversations
+        WHERE username = ?
+        GROUP BY session_id
+        ORDER BY MAX(id) DESC
+        """,
+        (username,),
+    )
+    rows = cursor.fetchall()
+    sessions: List[Dict] = []
+    for session_id, first_id in rows:
+        cursor.execute(
+            "SELECT message FROM conversations WHERE id = ?", (first_id,)
+        )
+        title_row = cursor.fetchone()
+        title = title_row[0] if title_row else "New Chat"
+        sessions.append({"id": session_id, "title": title[:30]})
+    conn.close()
+    return sessions
+
+
+def delete_session(session_id: str, username: str) -> None:
+    """Delete all conversation history for a session."""
+    init_db()
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute(
+        "DELETE FROM conversations WHERE session_id = ? AND username = ?",
+        (session_id, username),
+    )
+    conn.commit()
+    conn.close()

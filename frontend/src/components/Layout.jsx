@@ -6,13 +6,7 @@ import AppContext from '../store/AppContext';
 export default function Layout({ children }) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [sessions, setSessions] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem('chat_sessions')) || [];
-    } catch {
-      return [];
-    }
-  });
+  const [sessions, setSessions] = useState([]);
   const [tenants, setTenants] = useState([]);
   const [activeTenant, setActiveTenant] = useState(
     localStorage.getItem('active_tenant') || ''
@@ -30,9 +24,7 @@ export default function Layout({ children }) {
 
   const createSession = () => {
     const id = crypto.randomUUID();
-    const next = [{ id, title: 'New Chat' }, ...sessions];
-    setSessions(next);
-    localStorage.setItem('chat_sessions', JSON.stringify(next));
+    setSessions((prev) => [{ id, title: 'New Chat' }, ...prev]);
     navigate(`/chat?session=${id}`);
   };
 
@@ -50,6 +42,13 @@ export default function Layout({ children }) {
   }, [role]);
 
   useEffect(() => {
+    api
+      .get('/chat/sessions')
+      .then((res) => setSessions(res.data.sessions || []))
+      .catch(() => setSessions([]));
+  }, []);
+
+  useEffect(() => {
     if (!activeTenant && tenants.length > 0) {
       setActiveTenant(tenants[0]);
       localStorage.setItem('active_tenant', tenants[0]);
@@ -59,6 +58,15 @@ export default function Layout({ children }) {
   const updateActiveTenant = (t) => {
     setActiveTenant(t);
     localStorage.setItem('active_tenant', t);
+  };
+
+  const deleteSession = async (id) => {
+    try {
+      await api.delete(`/chat/session/${id}`);
+      setSessions((prev) => prev.filter((s) => s.id !== id));
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   return (
@@ -88,10 +96,23 @@ export default function Layout({ children }) {
                   <li
                     key={s.id}
                     className="flex items-center gap-3 p-2 rounded hover:bg-gray-800 cursor-pointer"
-                    onClick={() => navigate(`/chat?session=${s.id}`)}
                   >
-                    <i className="fas fa-comment text-gray-400"></i>
-                    <span className="text-sm truncate">{s.title}</span>
+                    <i className="fas fa-comment text-gray-400" onClick={() => navigate(`/chat?session=${s.id}`)}></i>
+                    <span
+                      className="flex-1 text-sm truncate"
+                      onClick={() => navigate(`/chat?session=${s.id}`)}
+                    >
+                      {s.title}
+                    </span>
+                    <button
+                      className="text-gray-400 hover:text-red-500"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteSession(s.id);
+                      }}
+                    >
+                      <i className="fas fa-trash"></i>
+                    </button>
                   </li>
                 ))}
               </ul>
