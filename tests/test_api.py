@@ -231,3 +231,63 @@ def test_login_migrates_missing_columns(tmp_path, monkeypatch):
     ]:
         assert expected in cols
 
+
+def test_login_upgrades_plaintext_password(tmp_path, monkeypatch):
+    """Plaintext passwords are converted to bcrypt hashes automatically."""
+
+    monkeypatch.setattr(tenant_storage, "TENANT_FILE", tmp_path / "tenants.json")
+    tm = tenant_manager.TenantManager()
+    monkeypatch.setattr(routes_admin, "manager", tm)
+    monkeypatch.setattr(routes_chat, "conversation_manager", ConversationManager())
+    monkeypatch.setattr(routes_chat, "tenant_manager", tm)
+
+    db_path = tmp_path / "system.db"
+
+    # schema already uses hashed_password but stores plain text value
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        CREATE TABLE users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL UNIQUE,
+            hashed_password TEXT NOT NULL,
+            role TEXT NOT NULL,
+            tenant_id TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """
+    )
+    now = datetime.utcnow().isoformat()
+    cursor.execute(
+        """
+        INSERT INTO users (username, hashed_password, role, tenant_id, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        ("admin", "ChangeThis123!", "super_admin", None, now, now),
+    )
+    conn.commit()
+    conn.close()
+
+    monkeypatch.setattr(user_repository, "DB_PATH", db_path)
+    monkeypatch.setattr(init_users_db, "DB_PATH", db_path)
+
+    client = TestClient(app)
+    resp = client.post(
+        "/auth/login",
+        json={"username": "admin", "password": "ChangeThis123!"},
+    )
+    assert resp.status_code == 200
+
+    # password should now be stored as bcrypt hash
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT hashed_password FROM users WHERE username = ?",
+        ("admin",),
+    )
+    stored = cursor.fetchone()[0]
+    conn.close()
+    assert stored.startswith("$2b$")
+

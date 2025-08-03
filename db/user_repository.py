@@ -62,6 +62,16 @@ def init_db() -> None:
         (now,),
     )
 
+    # upgrade any legacy plaintext passwords to bcrypt hashes
+    cursor.execute("SELECT id, hashed_password FROM users")
+    rows = cursor.fetchall()
+    for user_id, pwd in rows:
+        if pwd and not bcrypt.identify(pwd):
+            cursor.execute(
+                "UPDATE users SET hashed_password = ?, updated_at = ? WHERE id = ?",
+                (bcrypt.hash(pwd), _current_time(), user_id),
+            )
+
     conn.commit()
     conn.close()
 
