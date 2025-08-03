@@ -63,14 +63,7 @@ def init_db() -> None:
     )
 
     # upgrade any legacy plaintext passwords to bcrypt hashes
-    cursor.execute("SELECT id, hashed_password FROM users")
-    rows = cursor.fetchall()
-    for user_id, pwd in rows:
-        if pwd and not bcrypt.identify(pwd):
-            cursor.execute(
-                "UPDATE users SET hashed_password = ?, updated_at = ? WHERE id = ?",
-                (bcrypt.hash(pwd), _current_time(), user_id),
-            )
+    _rehash_plaintext_passwords(cursor)
 
     conn.commit()
     conn.close()
@@ -196,8 +189,39 @@ def delete_user(username: str) -> None:
     conn.close()
 
 
-def verify_password(password: str, password_hash: str) -> bool:
-    return bcrypt.verify(password, password_hash)
+def _rehash_plaintext_passwords(cursor: sqlite3.Cursor) -> None:
+    """Upgrade any plaintext passwords stored in the DB to bcrypt hashes."""
+    cursor.execute("SELECT id, username, hashed_password FROM users")
+    for user_id, username, pwd in cursor.fetchall():
+        if pwd and not bcrypt.identify(pwd):
+            cursor.execute(
+                "UPDATE users SET hashed_password = ?, updated_at = ? WHERE id = ?",
+                (bcrypt.hash(pwd), _current_time(), user_id),
+            )
+
+
+def verify_password(password: str, password_hash: str, username: Optional[str] = None) -> bool:
+    """Verify a password against the stored hash.
+
+    If the stored value is plaintext (legacy DBs), verify against the
+    plaintext and upgrade the stored value to a bcrypt hash.
+    """
+    if bcrypt.identify(password_hash):
+        return bcrypt.verify(password, password_hash)
+
+    # temporary support for plaintext passwords
+    if password == password_hash:
+        if username:
+            conn = sqlite3.connect(DB_PATH)
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE users SET hashed_password = ?, updated_at = ? WHERE username = ?",
+                (bcrypt.hash(password), _current_time(), username),
+            )
+            conn.commit()
+            conn.close()
+        return True
+    return False
 
 
 def update_last_login(user_id: int) -> None:

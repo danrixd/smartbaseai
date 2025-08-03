@@ -27,7 +27,9 @@ class RegisterRequest(BaseModel):
 @router.post("/login")
 def login(req: LoginRequest):
     user = user_repository.get_user(req.username)
-    if not user or not user_repository.verify_password(req.password, user["hashed_password"]):
+    if not user or not user_repository.verify_password(
+        req.password, user["hashed_password"], user["username"]
+    ):
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
     token = jwt.encode(
