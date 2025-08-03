@@ -60,6 +60,6 @@ def test_no_results(monkeypatch):
     rg = _build_rg(monkeypatch, rag_text="")
     # Message without date and RAG returns nothing
     result = rg.generate_response("what is up?")
-    assert result == "אין מידע"
+    assert result == "No information"
 
 

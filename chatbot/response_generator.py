@@ -11,7 +11,7 @@ modular and makes it easy to plug additional data providers in the future.
 
 The final prompt sent to the language model contains conversation history and a
 single consolidated context block derived from the DB and RAG sources. If both
-lookups fail, ``"אין מידע"`` is returned.
+lookups fail, ``"No information"`` is returned.
 """
 
 from __future__ import annotations
@@ -107,7 +107,7 @@ class ResponseGenerator:
 
         Both structured and unstructured searches are attempted. Missing results
         from one source do not prevent using the other. If both return nothing a
-        Hebrew "no information" string is returned.
+        "no information" message is returned.
         """
 
         db_text = self._lookup_db(user_message)
@@ -115,7 +115,7 @@ class ResponseGenerator:
         context = self._merge_sources(db_text, rag_text)
 
         if not context:
-            return "אין מידע"
+            return "No information"
 
         prompt = self._build_prompt(user_message, history, context)
         return self.model.generate(prompt)
