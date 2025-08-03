@@ -9,7 +9,7 @@ DB_PATH = Path("data/system.db")
 
 
 def init_db() -> None:
-    """Create the users table if it does not exist."""
+    """Create the users table and migrate legacy schemas if needed."""
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
@@ -27,6 +27,18 @@ def init_db() -> None:
         )
         """
     )
+
+    # migrate from old 'password' column if it exists
+    cursor.execute("PRAGMA table_info(users)")
+    columns = [row[1] for row in cursor.fetchall()]
+    if "hashed_password" not in columns and "password" in columns:
+        cursor.execute("ALTER TABLE users RENAME COLUMN password TO hashed_password")
+        columns[columns.index("password")] = "hashed_password"
+    if "hashed_password" not in columns:
+        cursor.execute("ALTER TABLE users ADD COLUMN hashed_password TEXT NOT NULL DEFAULT ''")
+    if "last_login" not in columns:
+        cursor.execute("ALTER TABLE users ADD COLUMN last_login TEXT")
+
     conn.commit()
     conn.close()
 
@@ -56,13 +68,31 @@ def get_user(username: str) -> Optional[Dict]:
     """Return a user record by username."""
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-    cursor.execute(
-        """
-        SELECT id, username, hashed_password, role, tenant_id, created_at, updated_at, last_login
-        FROM users WHERE username = ?
-        """,
-        (username,),
-    )
+    try:
+        cursor.execute(
+            """
+            SELECT id, username, hashed_password, role, tenant_id, created_at, updated_at, last_login
+            FROM users WHERE username = ?
+            """,
+            (username,),
+        )
+    except sqlite3.OperationalError as e:
+        # handle legacy DBs missing the hashed_password column
+        conn.close()
+        if "no such column: hashed_password" in str(e).lower():
+            init_db()
+            conn = sqlite3.connect(DB_PATH)
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT id, username, hashed_password, role, tenant_id, created_at, updated_at, last_login
+                FROM users WHERE username = ?
+                """,
+                (username,),
+            )
+        else:
+            raise
+
     row = cursor.fetchone()
     conn.close()
     if row:

@@ -10,6 +10,9 @@ from chatbot.conversation_manager import ConversationManager
 from api.app import app
 from db import user_repository
 from scripts import init_users_db
+import sqlite3
+from datetime import datetime
+from passlib.hash import bcrypt
 
 
 def setup_client(tmp_path, monkeypatch):
@@ -105,4 +108,69 @@ def test_chat_with_ollama(tmp_path, monkeypatch):
     )
     assert resp.status_code == 200
     assert "[Ollama" in resp.json()["reply"]
+
+
+def test_login_migrates_legacy_password_column(tmp_path, monkeypatch):
+    """Existing DBs with a 'password' column should be migrated automatically."""
+
+    monkeypatch.setattr(tenant_storage, "TENANT_FILE", tmp_path / "tenants.json")
+    tm = tenant_manager.TenantManager()
+    monkeypatch.setattr(routes_admin, "manager", tm)
+    monkeypatch.setattr(routes_chat, "conversation_manager", ConversationManager())
+    monkeypatch.setattr(routes_chat, "tenant_manager", tm)
+
+    db_path = tmp_path / "system.db"
+
+    # create legacy schema with 'password' column
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        CREATE TABLE users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL UNIQUE,
+            password TEXT NOT NULL,
+            role TEXT NOT NULL,
+            tenant_id TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """
+    )
+    now = datetime.utcnow().isoformat()
+    cursor.execute(
+        """
+        INSERT INTO users (username, password, role, tenant_id, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "admin",
+            bcrypt.hash("ChangeThis123!"),
+            "super_admin",
+            None,
+            now,
+            now,
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+    monkeypatch.setattr(user_repository, "DB_PATH", db_path)
+    monkeypatch.setattr(init_users_db, "DB_PATH", db_path)
+
+    client = TestClient(app)
+    resp = client.post(
+        "/auth/login",
+        json={"username": "admin", "password": "ChangeThis123!"},
+    )
+    assert resp.status_code == 200
+
+    # verify column migration
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    cursor.execute("PRAGMA table_info(users)")
+    cols = [row[1] for row in cursor.fetchall()]
+    conn.close()
+    assert "hashed_password" in cols
+    assert "password" not in cols
 
