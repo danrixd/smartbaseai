@@ -25,16 +25,15 @@ export default function Chat() {
   }, [location.search]);
 
   const loadHistory = useCallback(async () => {
-    if (!activeTenant) return;
     try {
       const res = await api.get('/chat/history', {
-        params: { session_id: sessionId, tenant_id: activeTenant },
+        params: { session_id: sessionId },
       });
       setHistory(res.data.history || []);
     } catch {
       setHistory([]);
     }
-  }, [sessionId, activeTenant]);
+  }, [sessionId]);
 
   useEffect(() => {
     loadHistory();
