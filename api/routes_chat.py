@@ -7,7 +7,7 @@ from chatbot.conversation_manager import ConversationManager
 from chatbot.response_generator import ResponseGenerator
 from tenants.tenant_manager import TenantManager
 
-from .auth import get_current_user
+from .auth_middleware import get_current_user
 
 
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -22,9 +22,12 @@ class ChatRequest(BaseModel):
 
 
 @router.post("/message")
-def chat_message(req: ChatRequest, user: dict = Depends(get_current_user)):
+def chat_message(req: ChatRequest, user=Depends(get_current_user)):
     """Receive a chat message and return a generated reply."""
     # Load tenant configuration to determine which model to use
+    if user.get("role") != "admin" and user.get("tenant_id") != req.tenant_id:
+        raise HTTPException(status_code=403, detail="Tenant access denied")
+
     tenant_config = tenant_manager.get(req.tenant_id)
     if tenant_config is None:
         raise HTTPException(status_code=404, detail="Tenant not found")

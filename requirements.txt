@@ -2,6 +2,7 @@ fastapi
 uvicorn
 pydantic
 PyJWT
+passlib[bcrypt]
 pytest
 
 httpx

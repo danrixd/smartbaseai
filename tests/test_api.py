@@ -8,6 +8,8 @@ import api.routes_admin as routes_admin
 import api.routes_chat as routes_chat
 from chatbot.conversation_manager import ConversationManager
 from api.app import app
+from db import user_repository
+from scripts import init_users_db
 
 
 def setup_client(tmp_path, monkeypatch):
@@ -17,11 +19,17 @@ def setup_client(tmp_path, monkeypatch):
     monkeypatch.setattr(routes_admin, "manager", tm)
     monkeypatch.setattr(routes_chat, "conversation_manager", ConversationManager())
     monkeypatch.setattr(routes_chat, "tenant_manager", tm)
+
+    db_path = tmp_path / "system.db"
+    monkeypatch.setattr(user_repository, "DB_PATH", db_path)
+    monkeypatch.setattr(init_users_db, "DB_PATH", db_path)
+    init_users_db.init_db()
+
     return TestClient(app)
 
 
 def get_token(client: TestClient) -> str:
-    resp = client.post("/token", data={"username": "admin", "password": "password"})
+    resp = client.post("/auth/login", json={"username": "admin", "password": "ChangeThis123!"})
     assert resp.status_code == 200
     return resp.json()["access_token"]
 
@@ -29,9 +37,9 @@ def get_token(client: TestClient) -> str:
 def test_login_and_whoami(tmp_path, monkeypatch):
     client = setup_client(tmp_path, monkeypatch)
     token = get_token(client)
-    r = client.get("/whoami", headers={"Authorization": f"Bearer {token}"})
+    r = client.get("/auth/me", headers={"Authorization": f"Bearer {token}"})
     assert r.status_code == 200
-    assert r.json() == {"username": "admin"}
+    assert r.json()["sub"] == "admin"
 
 
 def test_admin_and_chat_endpoints(tmp_path, monkeypatch):

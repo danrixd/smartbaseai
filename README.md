@@ -65,8 +65,9 @@ python scripts/build_embeddings.py --source docs/ --output embeddings.json \
 ### Authenticate
 
 ```bash
-curl -X POST -d "username=admin&password=password" \
-     http://localhost:8000/token
+curl -X POST -H "Content-Type: application/json" \
+     -d '{"username": "admin", "password": "ChangeThis123!"}' \
+     http://localhost:8000/auth/login
 ```
 
 Use the `access_token` returned above when calling other endpoints.
