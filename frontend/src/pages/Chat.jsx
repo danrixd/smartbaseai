@@ -51,16 +51,21 @@ export default function Chat() {
     const tenant = activeTenant || localStorage.getItem('tenant_id');
     if (!tenant) return;
 
+    const payload = {
+      session_id: sessionId,
+      tenant_id: tenant,
+      message: input,
+    };
+
+    console.log('>>> Sending to backend', payload);
+
     const msg = input;
     setInput('');
     setHistory((prev) => [...prev, { sender: 'user', message: msg }]);
 
     try {
-      const res = await api.post("/chat/message", {
-        session_id: sessionId,
-        tenant_id: tenant,
-        message: msg,
-      });
+      const res = await api.post('/chat/message', payload);
+      console.log('Response:', res.data);
 
       const idx = sessions.findIndex((s) => s.id === sessionId);
       let next = [...sessions];
@@ -74,7 +79,7 @@ export default function Chat() {
 
       setHistory(res.data.history || []);
     } catch (err) {
-      console.error(err);
+      console.error('API Error:', err);
     }
   };
 
