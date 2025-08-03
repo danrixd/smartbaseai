@@ -25,7 +25,7 @@ class ChatRequest(BaseModel):
 def chat_message(req: ChatRequest, user=Depends(get_current_user)):
     """Receive a chat message and return a generated reply."""
     # Load tenant configuration to determine which model to use
-    if user.get("role") != "admin" and user.get("tenant_id") != req.tenant_id:
+    if user.get("role") != "super_admin" and user.get("tenant_id") != req.tenant_id:
         raise HTTPException(status_code=403, detail="Tenant access denied")
 
     tenant_config = tenant_manager.get(req.tenant_id)

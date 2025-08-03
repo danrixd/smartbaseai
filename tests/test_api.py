@@ -39,7 +39,7 @@ def test_login_and_whoami(tmp_path, monkeypatch):
     token = get_token(client)
     r = client.get("/auth/me", headers={"Authorization": f"Bearer {token}"})
     assert r.status_code == 200
-    assert r.json()["sub"] == "admin"
+    assert r.json()["username"] == "admin"
 
 
 def test_admin_and_chat_endpoints(tmp_path, monkeypatch):
