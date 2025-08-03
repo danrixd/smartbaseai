@@ -63,7 +63,7 @@ export default function Chat() {
       message: input,
     };
 
-    console.log('>>> Sending to backend', payload);
+    console.log('>>> Sending to backend', JSON.stringify(payload));
 
     const msg = input;
     setInput('');
@@ -77,7 +77,9 @@ export default function Chat() {
       setSessions(sess.data.sessions || []);
       setHistory(res.data.history || []);
     } catch (err) {
-      console.error('API Error:', err);
+      const detail = err.response?.data?.detail || 'Unknown error';
+      console.error('API Error:', detail);
+      alert(`Chat request failed: ${detail}`);
     }
   };
 
