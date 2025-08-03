@@ -16,9 +16,15 @@ class TenantData(BaseModel):
 
 
 @router.get("/tenants")
-def list_tenants(user=Depends(require_role(["super_admin"]))):
-    """Return all tenant identifiers."""
-    return manager.list()
+def list_tenants(user=Depends(require_role(["super_admin", "admin"]))):
+    """Return tenant identifiers based on user role."""
+    if user["role"] == "super_admin":
+        return manager.list()
+    if user["role"] == "admin":
+        if user.get("tenant_id") is None:
+            raise HTTPException(status_code=400, detail="Admin missing tenant")
+        return [user["tenant_id"]]
+    raise HTTPException(status_code=403, detail="Insufficient permissions")
 
 
 @router.get("/tenants/{tenant_id}")

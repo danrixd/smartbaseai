@@ -48,12 +48,12 @@ def login(req: LoginRequest):
 
 
 @router.post("/register")
-def register(req: RegisterRequest, user=Depends(require_role(["super_admin", "tenant_admin"]))):
+def register(req: RegisterRequest, user=Depends(require_role(["super_admin", "admin"]))):
     if user_repository.get_user(req.username):
         raise HTTPException(status_code=400, detail="Username already exists")
 
-    # Tenant admins can only create users within their own tenant
-    if user["role"] == "tenant_admin":
+    # Admins can only create users within their own tenant
+    if user["role"] == "admin":
         if req.tenant_id is not None and req.tenant_id != user["tenant_id"]:
             raise HTTPException(status_code=403, detail="Tenant mismatch")
         req.tenant_id = user["tenant_id"]
@@ -64,4 +64,8 @@ def register(req: RegisterRequest, user=Depends(require_role(["super_admin", "te
 
 @router.get("/me")
 def me(user=Depends(get_current_user)):
-    return user
+    return {
+        "username": user["username"],
+        "role": user["role"],
+        "tenant_id": user["tenant_id"],
+    }
