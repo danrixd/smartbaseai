@@ -19,6 +19,7 @@ export default function Login() {
       const profile = await api.get('/auth/me');
       localStorage.setItem('role', profile.data.role);
       localStorage.setItem('tenant_id', profile.data.tenant_id);
+      localStorage.setItem('active_tenant', profile.data.tenant_id);
 
       navigate('/chat');
     } catch (err) {

@@ -1,45 +1,40 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useContext } from 'react';
+import { useLocation } from 'react-router-dom';
 import Layout from '../components/Layout';
 import api from '../api/api';
+import AppContext from '../store/AppContext';
 
 export default function Chat() {
-  const role = localStorage.getItem('role');
-  const defaultTenant = localStorage.getItem('tenant_id') || '';
-  const [tenants, setTenants] = useState([]);
-  const [selectedTenant, setSelectedTenant] = useState(defaultTenant);
-  const [sessionId, setSessionId] = useState(() => crypto.randomUUID());
+  const location = useLocation();
+  const { activeTenant, sessions, setSessions } = useContext(AppContext);
+  const [sessionId, setSessionId] = useState(() => {
+    const params = new URLSearchParams(location.search);
+    return params.get('session') || crypto.randomUUID();
+  });
   const [input, setInput] = useState('');
   const [history, setHistory] = useState([]);
   const containerRef = useRef(null);
 
   useEffect(() => {
-    if (role === 'admin' || role === 'super_admin') {
-      api
-        .get('/admin/tenants')
-        .then((res) => setTenants(res.data))
-        .catch(() => setTenants([]));
-    } else {
-      setTenants([defaultTenant]);
+    const params = new URLSearchParams(location.search);
+    const sid = params.get('session');
+    if (sid) {
+      setSessionId(sid);
+      setHistory([]);
     }
-  }, [role, defaultTenant]);
-
-  useEffect(() => {
-    if ((role === 'admin' || role === 'super_admin') && !selectedTenant && tenants.length > 0) {
-      setSelectedTenant(tenants[0]);
-    }
-  }, [tenants, role, selectedTenant]);
+  }, [location.search]);
 
   const loadHistory = useCallback(async () => {
-    if (!selectedTenant) return;
+    if (!activeTenant) return;
     try {
       const res = await api.get('/chat/history', {
-        params: { session_id: sessionId, tenant_id: selectedTenant },
+        params: { session_id: sessionId, tenant_id: activeTenant },
       });
       setHistory(res.data.history || []);
     } catch {
       setHistory([]);
     }
-  }, [sessionId, selectedTenant]);
+  }, [sessionId, activeTenant]);
 
   useEffect(() => {
     loadHistory();
@@ -52,20 +47,27 @@ export default function Chat() {
   }, [history]);
 
   const sendMessage = async () => {
-    if (!input.trim() || !selectedTenant) return;
-    await api.post('/chat/message', {
-      session_id: sessionId,
-      tenant_id: selectedTenant,
-      message: input,
-    });
-    setInput('');
-    await loadHistory();
-  };
-
-  const changeTenant = (e) => {
-    setSelectedTenant(e.target.value);
-    setHistory([]);
-    setSessionId(crypto.randomUUID());
+    if (!input.trim() || !activeTenant) return;
+    try {
+      await api.post('/chat/message', {
+        session_id: sessionId,
+        tenant_id: activeTenant,
+        message: input,
+      });
+      const idx = sessions.findIndex((s) => s.id === sessionId);
+      let next = [...sessions];
+      if (idx === -1) {
+        next = [{ id: sessionId, title: input.slice(0, 30) }, ...sessions];
+      } else if (next[idx].title === 'New Chat') {
+        next[idx].title = input.slice(0, 30);
+      }
+      setSessions(next);
+      localStorage.setItem('chat_sessions', JSON.stringify(next));
+      setInput('');
+      await loadHistory();
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   const examples = [
@@ -77,21 +79,6 @@ export default function Chat() {
   return (
     <Layout>
       <div className="flex flex-col flex-1 overflow-hidden">
-        {(role === 'admin' || role === 'super_admin') && (
-          <div className="p-4 bg-white border-b border-gray-200">
-            <select value={selectedTenant} onChange={changeTenant} className="border p-2 rounded">
-              <option value="" disabled>
-                Select tenant
-              </option>
-              {tenants.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
-
         <div ref={containerRef} className="flex-1 overflow-y-auto p-4 bg-gray-50">
           <div className="max-w-3xl mx-auto space-y-6">
             {history.length === 0 && (
