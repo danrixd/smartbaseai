@@ -30,9 +30,13 @@ export default function Chat() {
     try {
       const res = await api.get('/chat/history', {
         params: { session_id: sessionId },
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('access_token') || ''}`,
+        },
       });
       setHistory(res.data.history || []);
-    } catch {
+    } catch (err) {
+      console.error('History load failed:', err.response?.data?.detail || err.message);
       setHistory([]);
     }
   }, [sessionId]);
@@ -70,7 +74,11 @@ export default function Chat() {
     setHistory((prev) => [...prev, { sender: 'user', message: msg }]);
 
     try {
-      const res = await api.post('/chat/message', payload);
+      const res = await api.post('/chat/message', payload, {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('access_token') || ''}`,
+        },
+      });
       console.log('Response:', res.data);
 
       const sess = await api.get('/chat/sessions');
