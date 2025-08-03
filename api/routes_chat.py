@@ -6,13 +6,16 @@ from fastapi import APIRouter, Depends, HTTPException
 from chatbot.conversation_manager import ConversationManager
 from chatbot.response_generator import ResponseGenerator
 from tenants.tenant_manager import TenantManager
+import logging
 
+from db import conversation_repository, audit_log_repository
 from .auth_middleware import get_current_user
 
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 conversation_manager = ConversationManager()
 tenant_manager = TenantManager()
+logger = logging.getLogger(__name__)
 
 
 class ChatRequest(BaseModel):
@@ -37,6 +40,9 @@ def chat_message(req: ChatRequest, user=Depends(get_current_user)):
 
     conversation_manager.start_session(req.session_id)
     conversation_manager.add_message(req.session_id, "user", req.message)
+    conversation_repository.add_message(
+        req.session_id, user["username"], req.tenant_id, "user", req.message
+    )
     history = conversation_manager.history(req.session_id)
 
     generator = ResponseGenerator(
@@ -49,7 +55,19 @@ def chat_message(req: ChatRequest, user=Depends(get_current_user)):
         reply = f"[Ollama] {reply}"
 
     conversation_manager.add_message(req.session_id, "assistant", reply)
+    conversation_repository.add_message(
+        req.session_id, user["username"], req.tenant_id, "assistant", reply
+    )
+    audit_log_repository.log_action(user["username"], "chat_message", req.session_id)
     return {
         "reply": reply,
-        "history": conversation_manager.history(req.session_id),
+        "history": conversation_repository.get_history(
+            req.session_id, user["username"]
+        ),
     }
+
+
+@router.get("/history")
+def chat_history(session_id: str, user=Depends(get_current_user)):
+    """Return chat history for a session."""
+    return {"history": conversation_repository.get_history(session_id, user["username"])}
