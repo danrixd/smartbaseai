@@ -47,24 +47,32 @@ export default function Chat() {
   }, [history]);
 
   const sendMessage = async () => {
-    if (!input.trim() || !activeTenant) return;
+    if (!input.trim()) return;
+    const tenant = activeTenant || localStorage.getItem('tenant_id');
+    if (!tenant) return;
+
+    const msg = input;
+    setInput('');
+    setHistory((prev) => [...prev, { sender: 'user', message: msg }]);
+
     try {
-      await api.post('/chat/message', {
+      const res = await api.post('/chat/message', {
         session_id: sessionId,
-        tenant_id: activeTenant,
-        message: input,
+        tenant_id: tenant,
+        message: msg,
       });
+
       const idx = sessions.findIndex((s) => s.id === sessionId);
       let next = [...sessions];
       if (idx === -1) {
-        next = [{ id: sessionId, title: input.slice(0, 30) }, ...sessions];
+        next = [{ id: sessionId, title: msg.slice(0, 30) }, ...sessions];
       } else if (next[idx].title === 'New Chat') {
-        next[idx].title = input.slice(0, 30);
+        next[idx].title = msg.slice(0, 30);
       }
       setSessions(next);
       localStorage.setItem('chat_sessions', JSON.stringify(next));
-      setInput('');
-      await loadHistory();
+
+      setHistory(res.data.history || []);
     } catch (err) {
       console.error(err);
     }
@@ -154,6 +162,7 @@ export default function Chat() {
                   <i className="fas fa-paperclip"></i>
                 </button>
                 <button
+                  type="button"
                   className="bg-blue-500 hover:bg-blue-600 text-white p-2 rounded-lg transition-colors"
                   onClick={sendMessage}
                 >
