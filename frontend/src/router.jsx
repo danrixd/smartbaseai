@@ -1,7 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Login from './pages/Login';
-import AdminDashboard from './pages/AdminDashboard';
-import UserDashboard from './pages/UserDashboard';
 import Chat from './pages/Chat';
 import Files from './pages/Files';
 import Tenants from './pages/Tenants';
@@ -12,7 +10,7 @@ function PrivateRoute({ children, allowedRoles }) {
   const role = localStorage.getItem('role');
 
   if (!token) return <Navigate to="/login" />;
-  if (allowedRoles && !allowedRoles.includes(role)) return <Navigate to="/login" />;
+  if (allowedRoles && !allowedRoles.includes(role)) return <Navigate to="/chat" />;
 
   return children;
 }
@@ -22,33 +20,39 @@ export default function AppRouter() {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<Login />} />
-
         <Route
-          path="/admin/*"
-          element={
-            <PrivateRoute allowedRoles={['super_admin', 'admin']}>
-              <AdminDashboard />
-            </PrivateRoute>
-          }
-        >
-          <Route path="tenants" element={<Tenants />} />
-          <Route path="users" element={<Users />} />
-          <Route index element={<div>Select a section</div>} />
-        </Route>
-        <Route
-          path="/user/*"
+          path="/chat"
           element={
             <PrivateRoute allowedRoles={['user', 'admin', 'super_admin']}>
-              <UserDashboard />
+              <Chat />
             </PrivateRoute>
           }
-        >
-          <Route path="chat" element={<Chat />} />
-          <Route path="files" element={<Files />} />
-          <Route index element={<div>Select a section</div>} />
-        </Route>
-
-        <Route path="*" element={<Navigate to="/login" />} />
+        />
+        <Route
+          path="/files"
+          element={
+            <PrivateRoute allowedRoles={['user', 'admin', 'super_admin']}>
+              <Files />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/tenants"
+          element={
+            <PrivateRoute allowedRoles={['admin', 'super_admin']}>
+              <Tenants />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/users"
+          element={
+            <PrivateRoute allowedRoles={['admin', 'super_admin']}>
+              <Users />
+            </PrivateRoute>
+          }
+        />
+        <Route path="*" element={<Navigate to="/chat" />} />
       </Routes>
     </BrowserRouter>
   );

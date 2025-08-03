@@ -20,11 +20,7 @@ export default function Login() {
       localStorage.setItem('role', profile.data.role);
       localStorage.setItem('tenant_id', profile.data.tenant_id);
 
-      if (['super_admin', 'admin'].includes(profile.data.role)) {
-        navigate('/admin');
-      } else {
-        navigate('/user');
-      }
+      navigate('/chat');
     } catch (err) {
       console.error(err);
       setError('Invalid credentials');

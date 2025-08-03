@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import Layout from '../components/Layout';
 import api from '../api/api';
 
 export default function Files() {
@@ -26,13 +27,30 @@ export default function Files() {
   };
 
   return (
-    <div>
-      <input type="file" onChange={handleUpload} className="mb-4" />
-      <ul className="list-disc pl-5">
-        {files.map((f) => (
-          <li key={f.filename}>{f.filename}</li>
-        ))}
-      </ul>
-    </div>
+    <Layout>
+      <div className="p-4 flex-1 overflow-y-auto">
+        <div className="max-w-3xl mx-auto">
+          <input
+            type="file"
+            onChange={handleUpload}
+            className="mb-4"
+          />
+          <table className="min-w-full bg-white border">
+            <thead>
+              <tr className="bg-gray-100">
+                <th className="text-left p-2 border-b">Filename</th>
+              </tr>
+            </thead>
+            <tbody>
+              {files.map((f) => (
+                <tr key={f.filename} className="border-b last:border-b-0">
+                  <td className="p-2">{f.filename}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </Layout>
   );
 }
