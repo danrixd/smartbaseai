@@ -28,16 +28,39 @@ def init_db() -> None:
         """
     )
 
-    # migrate from old 'password' column if it exists
+    # inspect existing columns for migration of older schemas
     cursor.execute("PRAGMA table_info(users)")
     columns = [row[1] for row in cursor.fetchall()]
+
+    # rename legacy password column
     if "hashed_password" not in columns and "password" in columns:
         cursor.execute("ALTER TABLE users RENAME COLUMN password TO hashed_password")
         columns[columns.index("password")] = "hashed_password"
-    if "hashed_password" not in columns:
-        cursor.execute("ALTER TABLE users ADD COLUMN hashed_password TEXT NOT NULL DEFAULT ''")
-    if "last_login" not in columns:
-        cursor.execute("ALTER TABLE users ADD COLUMN last_login TEXT")
+
+    # required columns with their SQL definitions
+    required = {
+        "hashed_password": "TEXT NOT NULL DEFAULT ''",
+        "role": "TEXT NOT NULL DEFAULT 'user'",
+        "tenant_id": "TEXT",
+        "created_at": "TEXT NOT NULL DEFAULT ''",
+        "updated_at": "TEXT NOT NULL DEFAULT ''",
+        "last_login": "TEXT",
+    }
+
+    for column, ddl in required.items():
+        if column not in columns:
+            cursor.execute(f"ALTER TABLE users ADD COLUMN {column} {ddl}")
+
+    # ensure timestamps exist for existing rows
+    now = _current_time()
+    cursor.execute(
+        "UPDATE users SET created_at = ? WHERE created_at IS NULL OR created_at = ''",
+        (now,),
+    )
+    cursor.execute(
+        "UPDATE users SET updated_at = ? WHERE updated_at IS NULL OR updated_at = ''",
+        (now,),
+    )
 
     conn.commit()
     conn.close()
@@ -49,6 +72,7 @@ def _current_time() -> str:
 
 def create_user(username: str, password: str, role: str, tenant_id: Optional[str] = None) -> None:
     """Create a new user with the given credentials."""
+    init_db()
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     now = _current_time()
@@ -66,6 +90,7 @@ def create_user(username: str, password: str, role: str, tenant_id: Optional[str
 
 def get_user(username: str) -> Optional[Dict]:
     """Return a user record by username."""
+    init_db()
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     try:
@@ -77,9 +102,8 @@ def get_user(username: str) -> Optional[Dict]:
             (username,),
         )
     except sqlite3.OperationalError as e:
-        # handle legacy DBs missing the hashed_password column
         conn.close()
-        if "no such column: hashed_password" in str(e).lower():
+        if "no such column" in str(e).lower():
             init_db()
             conn = sqlite3.connect(DB_PATH)
             cursor = conn.cursor()
@@ -111,6 +135,7 @@ def get_user(username: str) -> Optional[Dict]:
 
 def list_users(tenant_id: Optional[str] = None) -> List[Dict]:
     """Return all users or only those belonging to a tenant."""
+    init_db()
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     if tenant_id is None:
@@ -140,6 +165,7 @@ def list_users(tenant_id: Optional[str] = None) -> List[Dict]:
 
 def update_user_role(username: str, new_role: str) -> None:
     """Update a user's role."""
+    init_db()
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute(
@@ -152,6 +178,7 @@ def update_user_role(username: str, new_role: str) -> None:
 
 def delete_user(username: str) -> None:
     """Delete a user by username."""
+    init_db()
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute("DELETE FROM users WHERE username = ?", (username,))
@@ -164,6 +191,7 @@ def verify_password(password: str, password_hash: str) -> bool:
 
 
 def update_last_login(user_id: int) -> None:
+    init_db()
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute(
