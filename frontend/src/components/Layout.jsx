@@ -29,15 +29,18 @@ export default function Layout({ children }) {
   };
 
   useEffect(() => {
-    if (role === 'admin' || role === 'super_admin') {
+    if (role === 'super_admin') {
       api
         .get('/admin/tenants')
-        .then((res) => setTenants(res.data))
+        .then((res) =>
+          setTenants(Array.isArray(res.data) ? res.data : Object.keys(res.data))
+        )
         .catch(() => setTenants([]));
     } else {
       const t = localStorage.getItem('tenant_id');
       setTenants(t ? [t] : []);
       setActiveTenant(t || '');
+      localStorage.setItem('active_tenant', t || '');
     }
   }, [role]);
 
