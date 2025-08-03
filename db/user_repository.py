@@ -7,6 +7,8 @@ from passlib.hash import bcrypt
 
 DB_PATH = Path("data/system.db")
 
+ALLOWED_ROLES = {"super_admin", "admin", "user"}
+
 
 def init_db() -> None:
     """Create the users table and migrate legacy schemas if needed."""
@@ -19,11 +21,12 @@ def init_db() -> None:
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT NOT NULL UNIQUE,
             hashed_password TEXT NOT NULL,
-            role TEXT NOT NULL CHECK(role IN ('super_admin', 'tenant_admin', 'user')),
+            role TEXT NOT NULL CHECK(role IN ('super_admin', 'admin', 'user')),
             tenant_id TEXT,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
-            last_login TEXT
+            last_login TEXT,
+            CHECK(role != 'super_admin' OR tenant_id IS NULL)
         )
         """
     )
@@ -75,6 +78,15 @@ def _current_time() -> str:
 
 def create_user(username: str, password: str, role: str, tenant_id: Optional[str] = None) -> None:
     """Create a new user with the given credentials."""
+    if role not in ALLOWED_ROLES:
+        raise ValueError("Invalid role")
+
+    if role != "super_admin" and tenant_id is None:
+        raise ValueError("tenant_id is required for non super_admin users")
+
+    if role == "super_admin":
+        tenant_id = None
+
     init_db()
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()

@@ -42,7 +42,10 @@ def test_login_and_whoami(tmp_path, monkeypatch):
     token = get_token(client)
     r = client.get("/auth/me", headers={"Authorization": f"Bearer {token}"})
     assert r.status_code == 200
-    assert r.json()["username"] == "admin"
+    data = r.json()
+    assert data["username"] == "admin"
+    assert data["role"] == "super_admin"
+    assert data["tenant_id"] is None
 
 
 def test_admin_and_chat_endpoints(tmp_path, monkeypatch):
@@ -81,6 +84,49 @@ def test_admin_and_chat_endpoints(tmp_path, monkeypatch):
     data = resp.json()
     assert data["reply"].startswith("[Ollama")
     assert len(data["history"]) == 2
+
+
+def test_tenants_access_by_role(tmp_path, monkeypatch):
+    client = setup_client(tmp_path, monkeypatch)
+    super_token = get_token(client)
+    headers = {"Authorization": f"Bearer {super_token}"}
+
+    # create tenant via super admin
+    resp = client.post(
+        "/admin/tenants/t1", json={"config": {}}, headers=headers
+    )
+    assert resp.status_code == 200
+
+    # create admin and regular user within tenant t1
+    user_repository.create_user("manager", "Pass123!", "admin", "t1")
+    user_repository.create_user("viewer", "Pass123!", "user", "t1")
+
+    # login as admin
+    resp = client.post(
+        "/auth/login", json={"username": "manager", "password": "Pass123!"}
+    )
+    assert resp.status_code == 200
+    token_admin = resp.json()["access_token"]
+
+    # login as regular user
+    resp = client.post(
+        "/auth/login", json={"username": "viewer", "password": "Pass123!"}
+    )
+    assert resp.status_code == 200
+    token_user = resp.json()["access_token"]
+
+    # admin should see only their tenant
+    resp = client.get(
+        "/admin/tenants", headers={"Authorization": f"Bearer {token_admin}"}
+    )
+    assert resp.status_code == 200
+    assert resp.json() == ["t1"]
+
+    # regular user should be forbidden
+    resp = client.get(
+        "/admin/tenants", headers={"Authorization": f"Bearer {token_user}"}
+    )
+    assert resp.status_code == 403
 
 
 def test_chat_with_ollama(tmp_path, monkeypatch):
