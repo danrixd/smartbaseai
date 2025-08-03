@@ -6,7 +6,10 @@ super admin account is seeded.
 """
 
 from pathlib import Path
-
+import sys
+# Ensure the project root is on the Python path so ``ai`` imports work when
+# executing this file directly via ``python scripts/load_tenant_data.py``.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from db import user_repository
 import init_users_db
 
