@@ -17,9 +17,10 @@ export default function Login() {
       localStorage.setItem('access_token', res.data.access_token);
 
       const profile = await api.get('/auth/me');
+      const tid = (profile.data.tenant_id || '').replace(/\s+/g, '');
       localStorage.setItem('role', profile.data.role);
-      localStorage.setItem('tenant_id', profile.data.tenant_id);
-      localStorage.setItem('active_tenant', profile.data.tenant_id);
+      localStorage.setItem('tenant_id', tid);
+      localStorage.setItem('active_tenant', tid);
 
       navigate('/chat');
     } catch (err) {

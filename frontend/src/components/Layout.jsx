@@ -9,7 +9,7 @@ export default function Layout({ children }) {
   const [sessions, setSessions] = useState([]);
   const [tenants, setTenants] = useState([]);
   const [activeTenant, setActiveTenant] = useState(
-    localStorage.getItem('active_tenant') || ''
+    (localStorage.getItem('active_tenant') || '').replace(/\s+/g, '')
   );
   const role = localStorage.getItem('role');
   const navigate = useNavigate();
@@ -33,11 +33,15 @@ export default function Layout({ children }) {
       api
         .get('/admin/tenants')
         .then((res) =>
-          setTenants(Array.isArray(res.data) ? res.data : Object.keys(res.data))
+          setTenants(
+            Array.isArray(res.data)
+              ? res.data.map((t) => t.replace(/\s+/g, ''))
+              : Object.keys(res.data).map((t) => t.replace(/\s+/g, ''))
+          )
         )
         .catch(() => setTenants([]));
     } else {
-      const t = localStorage.getItem('tenant_id');
+      const t = (localStorage.getItem('tenant_id') || '').replace(/\s+/g, '');
       setTenants(t ? [t] : []);
       setActiveTenant(t || '');
       localStorage.setItem('active_tenant', t || '');
@@ -59,8 +63,9 @@ export default function Layout({ children }) {
   }, [activeTenant, tenants]);
 
   const updateActiveTenant = (t) => {
-    setActiveTenant(t);
-    localStorage.setItem('active_tenant', t);
+    const id = (t || '').replace(/\s+/g, '');
+    setActiveTenant(id);
+    localStorage.setItem('active_tenant', id);
   };
 
   const deleteSession = async (id) => {
