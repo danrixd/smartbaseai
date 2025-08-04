@@ -6,8 +6,7 @@ import AppContext from '../store/AppContext';
 
 export default function Chat() {
   const location = useLocation();
-  const { activeTenant, setActiveTenant, tenants, setSessions } =
-    useContext(AppContext);
+  const { activeTenant, setSessions } = useContext(AppContext);
   const role = localStorage.getItem('role');
   const [sessionId, setSessionId] = useState(() => {
     const params = new URLSearchParams(location.search);
@@ -100,22 +99,6 @@ export default function Chat() {
   return (
     <Layout>
       <div className="flex flex-col flex-1 overflow-hidden">
-        {role === 'super_admin' && (
-          <div className="p-2 bg-white border-b border-gray-200">
-            <select
-              value={activeTenant}
-              onChange={(e) => setActiveTenant(e.target.value)}
-              className="p-2 border border-gray-300 rounded"
-            >
-              <option value="">Select tenant</option>
-              {tenants.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
         <div ref={containerRef} className="flex-1 overflow-y-auto p-4 bg-gray-50">
           <div className="max-w-3xl mx-auto space-y-6">
             {history.length === 0 && (
