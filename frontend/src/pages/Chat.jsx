@@ -87,7 +87,15 @@ export default function Chat() {
 
       const sess = await api.get('/chat/sessions');
       setSessions(sess.data.sessions || []);
-      setHistory(res.data.history || []);
+
+      const updatedHistory = res.data.history || [];
+      if (updatedHistory.length > 0) {
+        const last = updatedHistory[updatedHistory.length - 1];
+        if (last.sender === 'assistant') {
+          last.source = res.data.source;
+        }
+      }
+      setHistory(updatedHistory);
     } catch (err) {
       const detail = err.response?.data?.detail || 'Unknown error';
       console.error('API Error:', detail);
@@ -148,6 +156,9 @@ export default function Chat() {
                     <div className="flex-1">
                       <div className="bg-gray-100 rounded-lg p-4">
                         <p>{msg.message}</p>
+                        <p className="text-xs text-gray-500 mt-1">
+                          מקור התשובה: {msg.source || 'None'}
+                        </p>
                       </div>
                     </div>
                   </div>
