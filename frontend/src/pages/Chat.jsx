@@ -52,7 +52,12 @@ export default function Chat() {
 
   const sendMessage = async () => {
     if (!input.trim()) return;
-    let tenant = (activeTenant || localStorage.getItem('tenant_id') || '').replace(/\s+/g, '');
+    let tenant = (
+      activeTenant ||
+      localStorage.getItem('active_tenant') ||
+      localStorage.getItem('tenant_id') ||
+      ''
+    ).replace(/\s+/g, '');
     if (!tenant) {
       if (role === 'super_admin') {
         alert('Please select a tenant before chatting.');
