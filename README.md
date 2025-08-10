@@ -1,4 +1,4 @@
-![Alt text](relative%20path/to/logo.png?raw=true "Title")
+![SmartBaseAI Logo](logo.png)
 
 SmartBaseAI is an open-source starter kit for building multi-tenant chat
 applications. It includes a FastAPI backend, simple Next.js frontends and a
