@@ -1,6 +1,9 @@
 # smartbaseai
 
-This project provides a minimal API and test suite used for evaluation.
+SmartBaseAI is an open-source starter kit for building multi-tenant chat
+applications. It includes a FastAPI backend, simple Next.js frontends and a
+collection of scripts for managing tenants and embeddings. This repository is
+prepared for public use and contributions.
 
 ## Environment setup
 
@@ -113,4 +116,15 @@ sources can be integrated by implementing new helper methods that fetch and
 format their results before calling the language model. Each source should be
 encapsulated in its own method and added to the prompt in
 `chatbot/response_generator.py`.
+
+## Contributing
+
+Contributions are welcome! Please fork the repository and open a pull request
+for any enhancements or bug fixes. For large changes, open an issue first to
+discuss the proposed work. Make sure to run the test suite with `pytest -q`
+before submitting a PR.
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).
 
