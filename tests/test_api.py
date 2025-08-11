@@ -83,6 +83,7 @@ def test_admin_chat_and_history(tmp_path, monkeypatch):
     data = resp.json()
     assert data["reply"].startswith("[Ollama")
     assert len(data["history"]) == 2
+    assert data["source"] in {"None", "DB", "RAG", "DB + RAG"}
 
     resp = client.get("/chat/history", params={"session_id": "s1"}, headers=headers)
     assert resp.status_code == 200

@@ -51,7 +51,26 @@ def chat_message(req: ChatRequest, user=Depends(get_current_user)):
         model_type=model_type,
         model_name=model_name,
     )
-    reply = generator.generate_response(req.message, history)
+
+    # Determine which sources contributed to the response
+    db_text = generator._lookup_db(req.message)
+    rag_text = generator._search_rag(req.message)
+    if db_text and rag_text:
+        source_info = "DB + RAG"
+    elif db_text:
+        source_info = "DB"
+    elif rag_text:
+        source_info = "RAG"
+    else:
+        source_info = "None"
+
+    context = generator._merge_sources(db_text, rag_text)
+    if not context:
+        reply = "No information"
+    else:
+        prompt = generator._build_prompt(req.message, history, context)
+        reply = generator.model.generate(prompt)
+
     if model_type == "ollama" and not reply.startswith("[Ollama"):
         reply = f"[Ollama] {reply}"
 
@@ -65,6 +84,7 @@ def chat_message(req: ChatRequest, user=Depends(get_current_user)):
         "history": conversation_repository.get_history(
             req.session_id, user["username"]
         ),
+        "source": source_info,
     }
 
 
