@@ -469,10 +469,14 @@ def phase_extra_10ks(tickers: list[str], user_agent: str, tqdm) -> int:
         text = re.sub(r"\n{3,}", "\n\n", text)
         # Trim to a reasonable size — EDGAR submissions are enormous.
         text = text[:400_000]
+        # Preserve ONLY the accession number (the stable public identifier),
+        # not the absolute filesystem path. The accession looks like
+        # "0001234567-25-000001" and is the last-but-one path segment.
+        accession = submission.parent.name
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(
             f"# {ticker} — latest 10-K (SEC EDGAR)\n\n"
-            f"Source: {submission}\n\n"
+            f"Source: SEC EDGAR filing {accession}\n\n"
             f"---\n\n{text}\n",
             encoding="utf-8",
         )
@@ -645,7 +649,9 @@ def ensure_tenant() -> None:
         "name": TENANT_NAME,
         "description": TENANT_DESCRIPTION,
         "db_type": "sqlite",
-        "db_config": {"path": str(STRUCTURED_DB)},
+        # Store as a repo-relative path so tenants.json doesn't leak the
+        # operator's filesystem layout when it's committed.
+        "db_config": {"path": "data/financebench.db"},
         "models": models,
         "model_type": models[0]["provider"],
         "model_name": models[0]["name"],
