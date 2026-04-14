@@ -1,9 +1,11 @@
 # Python cache files
 __pycache__/
 *.pyc
+.pytest_cache/
 
 # Environment files
 .env
+frontend/.env.local
 
 # Node dependencies
 node_modules/
@@ -11,3 +13,18 @@ node_modules/
 # Build artifacts
 dist/
 build/
+frontend/dist/
+
+# Runtime state — never commit
+vector_store/
+data/*.db
+data/uploads/
+embeddings.json
+
+# Virtual envs
+venv/
+.venv/
+
+# IDE
+.idea/
+.vscode/
