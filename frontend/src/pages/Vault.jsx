@@ -2,6 +2,7 @@ import { useContext, useEffect, useState } from 'react';
 import api from '../api/api';
 import AppContext from '../store/AppContext';
 import VaultGate from '../components/VaultGate';
+import FileTree from '../components/FileTree';
 
 export default function Vault() {
   const { activeTenant, tenants } = useContext(AppContext);
@@ -150,10 +151,10 @@ export default function Vault() {
 
         <div className="flex-1 grid grid-cols-1 md:grid-cols-[260px_1fr] gap-4 min-h-0">
           {/* File list */}
-          <div className="bg-white border border-slate-200 rounded p-3 overflow-y-auto flex flex-col">
-            <div className="flex items-center justify-between mb-2">
+          <div className="bg-white border border-slate-200 rounded p-3 flex flex-col min-h-0">
+            <div className="flex items-center justify-between mb-2 flex-shrink-0">
               <div className="text-xs font-semibold text-slate-500 uppercase">
-                Files in {tenantId}
+                {tenantId}
               </div>
               <label className="text-[11px] text-indigo-600 hover:text-indigo-800 cursor-pointer">
                 + Add file
@@ -165,31 +166,9 @@ export default function Vault() {
                 />
               </label>
             </div>
-            {files.length === 0 && (
-              <div className="text-xs text-slate-400">
-                {loading ? 'loading…' : 'no files yet — click + Add file'}
-              </div>
-            )}
-            <ul className="space-y-1 flex-1">
-              {files.map((f) => (
-                <li key={f.filename}>
-                  <button
-                    className={`w-full text-left text-xs px-2 py-1 rounded font-mono truncate ${
-                      selected === f.filename
-                        ? 'bg-indigo-100 text-indigo-800'
-                        : 'hover:bg-slate-100 text-slate-700'
-                    }`}
-                    onClick={() => open(f.filename)}
-                    title={`${f.size} bytes`}
-                  >
-                    {f.filename}
-                  </button>
-                </li>
-              ))}
-            </ul>
-            <div className="text-[10px] text-slate-400 mt-2 pt-2 border-t border-slate-100">
-              Supports .md, .txt, .csv, .log — uploaded files are automatically
-              embedded into the tenant's Chroma collection.
+            <FileTree files={files} selected={selected} onOpen={open} loading={loading} />
+            <div className="text-[10px] text-slate-400 mt-2 pt-2 border-t border-slate-100 flex-shrink-0">
+              Supports .md, .txt, .csv, .log — uploaded files are auto-embedded.
             </div>
           </div>
 
