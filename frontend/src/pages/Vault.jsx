@@ -1,4 +1,5 @@
 import { useContext, useEffect, useState } from 'react';
+import ReactMarkdown from 'react-markdown';
 import api from '../api/api';
 import AppContext from '../store/AppContext';
 import VaultGate from '../components/VaultGate';
@@ -17,6 +18,7 @@ export default function Vault() {
   const [originalContent, setOriginalContent] = useState('');
   const [loading, setLoading] = useState(false);
   const [flash, setFlash] = useState('');
+  const [viewMode, setViewMode] = useState('edit'); // 'edit' | 'preview' | 'split'
 
   useEffect(() => {
     if (activeTenant) setTenantId(activeTenant);
@@ -80,26 +82,37 @@ export default function Vault() {
   };
 
   const upload = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
     setLoading(true);
+    let ingested = 0;
+    let failed = 0;
+    let lastName = '';
     try {
-      const fd = new FormData();
-      fd.append('file', file);
-      const res = await api.post('/files/upload', fd, {
-        params: { tenant_id: tenantId },
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
+      for (const file of files) {
+        try {
+          const fd = new FormData();
+          fd.append('file', file);
+          const res = await api.post('/files/upload', fd, {
+            params: { tenant_id: tenantId },
+            headers: { 'Content-Type': 'multipart/form-data' },
+          });
+          if (res.data?.ingested) ingested += 1;
+          lastName = file.name;
+        } catch {
+          failed += 1;
+        }
+      }
       await loadFiles(tenantId);
       setFlash(
-        res.data.ingested
-          ? `Uploaded ${file.name} and ingested into the ${tenantId} vault.`
-          : `Uploaded ${file.name} (type not ingestible — saved but not embedded).`,
+        files.length === 1
+          ? (ingested
+              ? `Uploaded ${lastName} and ingested into the ${tenantId} vault.`
+              : `Uploaded ${lastName} (type not ingestible — saved but not embedded).`)
+          : `Uploaded ${files.length - failed}/${files.length} files · ${ingested} ingested.`,
       );
-      setTimeout(() => setFlash(''), 4000);
-      open(file.name);
-    } catch (err) {
-      setFlash(err.response?.data?.detail || 'Upload failed');
+      setTimeout(() => setFlash(''), 5000);
+      if (files.length === 1 && lastName) open(lastName);
     } finally {
       setLoading(false);
       e.target.value = '';
@@ -157,12 +170,13 @@ export default function Vault() {
                 {tenantId}
               </div>
               <label className="text-[11px] text-indigo-600 hover:text-indigo-800 cursor-pointer">
-                + Add file
+                + Add files
                 <input
                   type="file"
                   className="hidden"
                   accept=".md,.markdown,.txt,.csv,.log"
                   onChange={upload}
+                  multiple
                 />
               </label>
             </div>
@@ -180,9 +194,24 @@ export default function Vault() {
               </div>
             ) : (
               <>
-                <div className="flex items-center justify-between mb-2">
-                  <div className="text-sm font-semibold text-slate-700 font-mono">
+                <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
+                  <div className="text-sm font-semibold text-slate-700 font-mono truncate flex-1 min-w-0">
                     {selected}
+                  </div>
+                  <div className="flex items-center gap-1 bg-slate-100 border border-slate-200 rounded p-0.5">
+                    {['edit', 'split', 'preview'].map((m) => (
+                      <button
+                        key={m}
+                        className={`text-[11px] px-2 py-0.5 rounded ${
+                          viewMode === m
+                            ? 'bg-white text-slate-800 shadow-sm'
+                            : 'text-slate-500 hover:text-slate-700'
+                        }`}
+                        onClick={() => setViewMode(m)}
+                      >
+                        {m}
+                      </button>
+                    ))}
                   </div>
                   <div className="flex gap-2">
                     <button
@@ -201,14 +230,23 @@ export default function Vault() {
                     </button>
                   </div>
                 </div>
-                <textarea
-                  className="flex-1 w-full p-3 text-xs font-mono border border-slate-300 rounded resize-none focus:outline-none focus:border-indigo-400"
-                  value={content}
-                  onChange={(e) => setContent(e.target.value)}
-                  spellCheck={false}
-                />
+                <div className={`flex-1 min-h-0 ${viewMode === 'split' ? 'grid grid-cols-2 gap-2' : ''}`}>
+                  {viewMode !== 'preview' && (
+                    <textarea
+                      className="w-full h-full p-3 text-xs font-mono border border-slate-300 rounded resize-none focus:outline-none focus:border-indigo-400"
+                      value={content}
+                      onChange={(e) => setContent(e.target.value)}
+                      spellCheck={false}
+                    />
+                  )}
+                  {viewMode !== 'edit' && (
+                    <div className="w-full h-full p-3 border border-slate-200 rounded overflow-y-auto bg-slate-50 prose prose-sm max-w-none">
+                      <ReactMarkdown>{content}</ReactMarkdown>
+                    </div>
+                  )}
+                </div>
                 {dirty && (
-                  <div className="text-[11px] text-amber-600 mt-1">
+                  <div className="text-[11px] text-amber-600 mt-1 flex-shrink-0">
                     Unsaved changes — the vault will re-embed this file on save.
                   </div>
                 )}

@@ -1,14 +1,23 @@
 from __future__ import annotations
 
+import json
+import logging
+import time
+
 from pydantic import BaseModel
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 
 from chatbot.conversation_manager import ConversationManager
 from chatbot.response_generator import ResponseGenerator
 from tenants.tenant_manager import TenantManager
-import logging
 
-from db import conversation_repository, audit_log_repository, rag_trace_repository
+from db import (
+    audit_log_repository,
+    conversation_repository,
+    rag_trace_repository,
+    usage_repository,
+)
 from .auth_middleware import get_current_user
 
 
@@ -64,6 +73,17 @@ def chat_message(req: ChatRequest, user=Depends(get_current_user)):
     if tenant_config is None:
         raise HTTPException(status_code=404, detail="Tenant not found")
 
+    # Per-tenant daily token cap — opt-in. Set ``daily_token_cap`` on the
+    # tenant config to any positive integer to enforce; 0/missing = unlimited.
+    cap = int(tenant_config.get("daily_token_cap") or 0)
+    if cap > 0:
+        used = usage_repository.today_token_total(tenant_id)
+        if used >= cap:
+            raise HTTPException(
+                status_code=429,
+                detail=f"Daily token cap reached for tenant '{tenant_id}' ({used}/{cap})",
+            )
+
     model_type, model_name = _resolve_model(tenant_config, req)
 
     conversation_manager.start_session(req.session_id)
@@ -78,7 +98,9 @@ def chat_message(req: ChatRequest, user=Depends(get_current_user)):
         model_type=model_type,
         model_name=model_name,
     )
+    t_start = time.monotonic()
     reply = generator.generate_response(req.message, history)
+    latency_ms = (time.monotonic() - t_start) * 1000
     if model_type == "ollama" and not reply.startswith("[Ollama"):
         reply = f"[Ollama] {reply}"
 
@@ -86,6 +108,23 @@ def chat_message(req: ChatRequest, user=Depends(get_current_user)):
     conversation_repository.add_message(
         req.session_id, user["username"], tenant_id, "assistant", reply
     )
+
+    # Rough input/output token estimates (4 chars/token heuristic) since the
+    # generator wraps multiple provider types that don't all report usage.
+    # AnthropicModel logs real usage in its own code; this is the floor
+    # estimate used for rate-limiting and cost display.
+    approx_input = max(1, (len(req.message) + 2000) // 4)
+    approx_output = max(1, len(reply) // 4)
+    usage_repository.record(
+        tenant_id=tenant_id,
+        username=user["username"],
+        provider=model_type,
+        model_name=model_name or "",
+        input_tokens=approx_input,
+        output_tokens=approx_output,
+        latency_ms=latency_ms,
+    )
+
     audit_log_repository.log_action(user["username"], "chat_message", req.session_id)
     return {
         "reply": reply,
@@ -93,6 +132,70 @@ def chat_message(req: ChatRequest, user=Depends(get_current_user)):
             req.session_id, user["username"]
         ),
     }
+
+
+@router.post("/message/stream")
+def chat_message_stream(req: ChatRequest, user=Depends(get_current_user)):
+    """Token-by-token SSE variant of /chat/message.
+
+    Streams the full reply in ~60-char chunks so the frontend can render
+    progressively. Providers that don't expose a streaming API still get
+    chunked-delivery semantics on the frontend side.
+    """
+    tenant_id = req.tenant_id.strip()
+    if user.get("role") != "super_admin" and user.get("tenant_id") != tenant_id:
+        raise HTTPException(status_code=403, detail="Tenant access denied")
+    tenant_config = tenant_manager.get(tenant_id)
+    if tenant_config is None:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    cap = int(tenant_config.get("daily_token_cap") or 0)
+    if cap > 0 and usage_repository.today_token_total(tenant_id) >= cap:
+        raise HTTPException(status_code=429, detail="Daily token cap reached")
+
+    model_type, model_name = _resolve_model(tenant_config, req)
+    conversation_manager.start_session(req.session_id)
+    conversation_manager.add_message(req.session_id, "user", req.message)
+    conversation_repository.add_message(
+        req.session_id, user["username"], tenant_id, "user", req.message
+    )
+    history = conversation_manager.history(req.session_id)
+    generator = ResponseGenerator(
+        tenant_id=tenant_id, model_type=model_type, model_name=model_name,
+    )
+
+    def _sse(event: str, data: dict) -> bytes:
+        return f"event: {event}\ndata: {json.dumps(data)}\n\n".encode()
+
+    def event_stream():
+        t0 = time.monotonic()
+        try:
+            reply = generator.generate_response(req.message, history)
+        except Exception as e:
+            yield _sse("error", {"detail": f"{type(e).__name__}: {e}"})
+            return
+        if model_type == "ollama" and not reply.startswith("[Ollama"):
+            reply = f"[Ollama] {reply}"
+        CHUNK = 60
+        for i in range(0, len(reply), CHUNK):
+            yield _sse("delta", {"text": reply[i : i + CHUNK]})
+        latency_ms = (time.monotonic() - t0) * 1000
+        conversation_manager.add_message(req.session_id, "assistant", reply)
+        conversation_repository.add_message(
+            req.session_id, user["username"], tenant_id, "assistant", reply
+        )
+        usage_repository.record(
+            tenant_id=tenant_id,
+            username=user["username"],
+            provider=model_type,
+            model_name=model_name or "",
+            input_tokens=max(1, (len(req.message) + 2000) // 4),
+            output_tokens=max(1, len(reply) // 4),
+            latency_ms=latency_ms,
+        )
+        audit_log_repository.log_action(user["username"], "chat_stream", req.session_id)
+        yield _sse("done", {"latency_ms": round(latency_ms, 1)})
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
 @router.post("/trace")

@@ -151,9 +151,20 @@ export default function Layout({ children }) {
                   </>
                 )}
                 {role === 'super_admin' && (
-                  <Link className="block p-2 rounded hover:bg-gray-800" to="/settings">
-                    Settings
-                  </Link>
+                  <>
+                    <Link className="block p-2 rounded hover:bg-gray-800" to="/search">
+                      Cross-tenant Search
+                    </Link>
+                    <Link className="block p-2 rounded hover:bg-gray-800" to="/usage">
+                      Usage
+                    </Link>
+                    <Link className="block p-2 rounded hover:bg-gray-800" to="/audit">
+                      Audit Log
+                    </Link>
+                    <Link className="block p-2 rounded hover:bg-gray-800" to="/settings">
+                      Settings
+                    </Link>
+                  </>
                 )}
               </nav>
             </div>

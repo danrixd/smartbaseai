@@ -1,6 +1,6 @@
 import sqlite3
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Dict
 
 DB_PATH = Path("data/system.db")
@@ -33,7 +33,7 @@ def add_message(session_id: str, username: str, tenant_id: str, sender: str, mes
     cursor = conn.cursor()
     cursor.execute(
         "INSERT INTO conversations (session_id, username, tenant_id, sender, message, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-        (session_id, username, tenant_id, sender, message, datetime.utcnow().isoformat()),
+        (session_id, username, tenant_id, sender, message, datetime.now(timezone.utc).isoformat()),
     )
     conn.commit()
     conn.close()

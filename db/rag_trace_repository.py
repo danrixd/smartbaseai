@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -54,7 +54,7 @@ def save_trace(
     trace: dict[str, Any],
     created_by: str,
 ) -> int:
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).isoformat()
     conn = _conn()
     try:
         cur = conn.execute(

@@ -5,7 +5,13 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from tenants.tenant_manager import TenantManager
-from db import user_repository, audit_log_repository, settings_repository
+from db import (
+    audit_log_repository,
+    settings_repository,
+    usage_repository,
+    user_repository,
+)
+from ai.vector_stores.chroma_store import TenantVectorStore
 from .auth_middleware import require_role
 from ai.models.anthropic_model import AnthropicModel
 from ai.models.openai_model import OpenAIModel
@@ -186,6 +192,85 @@ def models_test(
     else:
         raise HTTPException(status_code=400, detail=f"unknown provider: {provider}")
     return {"provider": provider, "ok": ok, "detail": detail}
+
+
+@router.get("/audit-log")
+def get_audit_log(
+    limit: int = 200,
+    offset: int = 0,
+    username: str | None = None,
+    action: str | None = None,
+    user=Depends(require_role(["super_admin"])),
+):
+    """Return recent audit events, newest first. Super_admin only."""
+    return {
+        "total": audit_log_repository.count_logs(username=username, action=action),
+        "logs": audit_log_repository.list_logs(
+            limit=min(max(limit, 1), 1000),
+            offset=max(offset, 0),
+            username=username,
+            action=action,
+        ),
+    }
+
+
+@router.get("/usage")
+def get_usage_rollup(
+    limit: int = 60,
+    user=Depends(require_role(["super_admin"])),
+):
+    """Per-day, per-tenant LLM usage + estimated cost."""
+    return {"rollup": usage_repository.rollup(limit=min(max(limit, 1), 365))}
+
+
+@router.get("/search")
+def cross_tenant_search(
+    q: str,
+    tenants: str | None = None,
+    top_k: int = 5,
+    user=Depends(require_role(["super_admin"])),
+):
+    """Super-admin cross-tenant retrieval.
+
+    Runs the same query against the hybrid retriever for every tenant in
+    ``tenants`` (comma-separated) or every tenant if omitted, and returns a
+    flat list of hits with tenant tags.
+    """
+    if not q.strip():
+        raise HTTPException(status_code=400, detail="q is required")
+    target_tenants: list[str]
+    if tenants:
+        target_tenants = [t.strip() for t in tenants.split(",") if t.strip()]
+    else:
+        target_tenants = manager.list()
+
+    results = []
+    for tid in target_tenants:
+        try:
+            store = TenantVectorStore(tid)
+            trace = store.hybrid_query_trace(q, n_results=top_k)
+        except Exception as exc:
+            logger.warning("cross-tenant search failed for %s: %s", tid, exc)
+            continue
+        for entry in trace.get("combined", []):
+            results.append(
+                {
+                    "tenant_id": tid,
+                    "source": entry.get("source"),
+                    "score": entry.get("score"),
+                    "filename": (entry.get("metadata") or {}).get("filename"),
+                    "path": (entry.get("metadata") or {}).get("path"),
+                    "preview": (entry.get("document") or "")[:400],
+                }
+            )
+    # Rank across tenants: keyword hits first, then semantic by distance
+    results.sort(
+        key=lambda r: (
+            0 if r["source"] == "keyword" else 1,
+            r["score"] if r["score"] is not None else 9.99,
+        )
+    )
+    return {"query": q, "tenants": target_tenants, "hits": results[: top_k * max(len(target_tenants), 1)]}
 
 
 @router.delete("/users/{username}")

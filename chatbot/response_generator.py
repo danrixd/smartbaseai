@@ -25,8 +25,11 @@ from ai.models.openai_model import OpenAIModel
 from ai.rag_pipeline import RAGPipeline
 from db.query_engine import exact_lookup
 
-# Simple pattern for ISO like ``YYYY-MM-DD HH:MM`` timestamps.
+# Match either "YYYY-MM-DD HH:MM" (intraday market_data rows) or bare
+# "YYYY-MM-DD" (daily_bars rows). DATE_ONLY_PATTERN is used as a fallback
+# when the datetime pattern doesn't fire.
 DATE_PATTERN = re.compile(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}")
+DATE_ONLY_PATTERN = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
 
 
 class ResponseGenerator:
@@ -50,20 +53,45 @@ class ResponseGenerator:
     # ------------------------------------------------------------------
     # Helpers for the different data sources
     def _lookup_db(self, message: str) -> str:
-        """Return a formatted row from the tenant's DB if the message contains a date."""
-        match = DATE_PATTERN.search(message)
-        if not match:
-            return ""
+        """Return a formatted row from the tenant's DB if the message contains a date.
 
-        date_str = match.group(0)
-        row = exact_lookup(date_str, self.tenant_id)
-        if not row:
-            return ""
-        return (
-            f"Close value for {date_str} is {row['close']} "
-            f"(Open: {row['open']}, High: {row['high']}, "
-            f"Low: {row['low']}, Volume: {row['volume']})"
-        )
+        Tries two patterns:
+          1. Intraday "YYYY-MM-DD HH:MM" → legacy market_data rows.
+          2. Date-only "YYYY-MM-DD" → financebench daily_bars or market_data.
+
+        The second pattern passes ``message=`` so ``exact_lookup`` can sniff a
+        ticker hint for the financebench tenant.
+        """
+        match = DATE_PATTERN.search(message)
+        if match:
+            date_str = match.group(0)
+            row = exact_lookup(date_str, self.tenant_id, message=message)
+            if row:
+                return self._format_row(date_str, row)
+
+        match = DATE_ONLY_PATTERN.search(message)
+        if match:
+            date_str = match.group(0)
+            row = exact_lookup(date_str, self.tenant_id, message=message)
+            if row:
+                return self._format_row(date_str, row)
+
+        return ""
+
+    @staticmethod
+    def _format_row(date_str: str, row: dict) -> str:
+        """Render a structured row into a one-line context string."""
+        ticker = row.get("ticker")
+        prefix = f"{ticker} on {row.get('date', date_str)}" if ticker else f"Close value for {date_str}"
+        try:
+            close = row["close"]
+            return (
+                f"{prefix}: close={close} "
+                f"(open={row.get('open')}, high={row.get('high')}, "
+                f"low={row.get('low')}, volume={row.get('volume')})"
+            )
+        except Exception:
+            return f"{prefix}: {row}"
 
     def _search_rag(self, message: str) -> str:
         """Retrieve free-form context using the RAG pipeline."""
@@ -139,21 +167,23 @@ class ResponseGenerator:
         history_list = list(history or [])
         history_text = self._format_history(history_list)
 
-        # 2. Structured DB lookup
-        db_match = DATE_PATTERN.search(user_message)
+        # 2. Structured DB lookup (intraday first, then date-only)
         db_row: dict = {}
         db_text = ""
-        if db_match:
-            date_str = db_match.group(0)
-            db_row = exact_lookup(date_str, self.tenant_id) or {}
-            if db_row:
-                db_text = (
-                    f"Close value for {date_str} is {db_row['close']} "
-                    f"(Open: {db_row['open']}, High: {db_row['high']}, "
-                    f"Low: {db_row['low']}, Volume: {db_row['volume']})"
-                )
+        detected = None
+        m = DATE_PATTERN.search(user_message)
+        if m:
+            detected = m.group(0)
+            db_row = exact_lookup(detected, self.tenant_id, message=user_message) or {}
+        if not db_row:
+            m = DATE_ONLY_PATTERN.search(user_message)
+            if m:
+                detected = m.group(0)
+                db_row = exact_lookup(detected, self.tenant_id, message=user_message) or {}
+        if db_row:
+            db_text = self._format_row(detected or "", db_row)
         db_stage = {
-            "detected_date": db_match.group(0) if db_match else None,
+            "detected_date": detected,
             "matched": bool(db_row),
             "row": db_row,
             "text": db_text,

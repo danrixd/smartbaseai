@@ -11,9 +11,12 @@ without silently pretending to be connected.
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from db import settings_repository
+
+logger = logging.getLogger("smartbaseai.anthropic")
 
 DEFAULT_MODEL = "claude-opus-4-6"
 DEFAULT_MAX_TOKENS = 1024
@@ -89,6 +92,23 @@ class AnthropicModel:
             return f"[Anthropic API error {getattr(e, 'status_code', '?')}] {e}"
         except Exception as e:
             return f"[Anthropic unexpected error] {e}"
+
+        # Log prompt-cache usage so we can verify the cache_control block
+        # is actually being hit across turns. Operators care about the
+        # cache_read_input_tokens field — if it stays 0 across repeated
+        # queries, the prefix is changing somewhere (silent invalidator).
+        try:
+            usage = response.usage
+            logger.info(
+                "anthropic usage: input=%s cache_create=%s cache_read=%s output=%s (model=%s)",
+                getattr(usage, "input_tokens", None),
+                getattr(usage, "cache_creation_input_tokens", None),
+                getattr(usage, "cache_read_input_tokens", None),
+                getattr(usage, "output_tokens", None),
+                self.model_name,
+            )
+        except Exception:
+            pass
 
         parts: list[str] = []
         for block in response.content:

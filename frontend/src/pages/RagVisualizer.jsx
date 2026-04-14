@@ -298,6 +298,78 @@ export default function RagVisualizer() {
     }
   };
 
+  const copyTraceJSON = async () => {
+    if (!trace) return;
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(trace, null, 2));
+      setError('');
+      setSavedExpanded(true);
+    } catch {
+      setError('clipboard copy failed');
+    }
+  };
+
+  const downloadTrace = (format) => {
+    if (!trace) return;
+    const q = (trace.query || 'trace').replace(/[^a-z0-9_-]+/gi, '_').slice(0, 60);
+    let body;
+    let mime;
+    let ext;
+    if (format === 'json') {
+      body = JSON.stringify(trace, null, 2);
+      mime = 'application/json';
+      ext = 'json';
+    } else {
+      // markdown
+      const s = trace.stages || {};
+      const lines = [];
+      lines.push(`# RAG trace: ${trace.query}`);
+      lines.push('');
+      lines.push(`- **Tenant:** ${trace.tenant_id}`);
+      lines.push(`- **Model:** ${s.llm?.model_type || '-'}`);
+      lines.push('');
+      lines.push('## DB exact lookup');
+      if (s.db_lookup?.matched) {
+        lines.push(`- matched date: ${s.db_lookup.detected_date}`);
+        lines.push(`- row: \`${JSON.stringify(s.db_lookup.row)}\``);
+      } else {
+        lines.push(`- no match (date detected: ${s.db_lookup?.detected_date || 'none'})`);
+      }
+      lines.push('');
+      lines.push('## Hybrid retrieval');
+      const store = s.rag_retrieval?.store || {};
+      lines.push(`- collection: ${store.collection_name} (${store.count} vectors)`);
+      lines.push(`- embedder: ${store.embedding_model}  device: ${store.device}`);
+      lines.push('');
+      lines.push('### Semantic ranking');
+      for (const [i, e] of (s.rag_retrieval?.semantic || []).entries()) {
+        const f = e.metadata?.filename || '?';
+        lines.push(`- #${i + 1}  d=${e.score?.toFixed?.(3) || '-'}  ${f}`);
+      }
+      lines.push('');
+      lines.push('## Fusion');
+      lines.push('```');
+      lines.push(s.fusion?.merged || '(empty)');
+      lines.push('```');
+      lines.push('');
+      lines.push('## LLM reply');
+      lines.push('');
+      lines.push(s.llm?.reply || trace.reply || '');
+      body = lines.join('\n');
+      mime = 'text/markdown';
+      ext = 'md';
+    }
+    const blob = new Blob([body], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `trace_${q}.${ext}`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   const formatWhen = (iso) => {
     if (!iso) return '';
     try {
@@ -483,16 +555,42 @@ export default function RagVisualizer() {
                       <span>Unsaved — click "Save trace" to keep this view.</span>
                     )}
                   </div>
-                  <button
-                    type="button"
-                    className="text-xs px-3 py-1 rounded border disabled:opacity-50 disabled:cursor-not-allowed
-                      bg-indigo-50 hover:bg-indigo-100 border-indigo-200 text-indigo-800
-                      disabled:bg-slate-50 disabled:text-slate-500 disabled:border-slate-200"
-                    onClick={saveCurrentTrace}
-                    disabled={traceIsSaved}
-                  >
-                    💾 Save trace
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      className="text-xs px-2 py-1 rounded border bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-700"
+                      onClick={copyTraceJSON}
+                      title="Copy the full trace JSON to clipboard"
+                    >
+                      📋 Copy JSON
+                    </button>
+                    <button
+                      type="button"
+                      className="text-xs px-2 py-1 rounded border bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-700"
+                      onClick={() => downloadTrace('md')}
+                      title="Download the trace as a markdown report"
+                    >
+                      ⬇ .md
+                    </button>
+                    <button
+                      type="button"
+                      className="text-xs px-2 py-1 rounded border bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-700"
+                      onClick={() => downloadTrace('json')}
+                      title="Download the trace as JSON"
+                    >
+                      ⬇ .json
+                    </button>
+                    <button
+                      type="button"
+                      className="text-xs px-3 py-1 rounded border disabled:opacity-50 disabled:cursor-not-allowed
+                        bg-indigo-50 hover:bg-indigo-100 border-indigo-200 text-indigo-800
+                        disabled:bg-slate-50 disabled:text-slate-500 disabled:border-slate-200"
+                      onClick={saveCurrentTrace}
+                      disabled={traceIsSaved}
+                    >
+                      💾 Save trace
+                    </button>
+                  </div>
                 </div>
                 <div className="flex flex-col lg:flex-row lg:items-stretch lg:justify-center gap-3">
                   {/* Query */}

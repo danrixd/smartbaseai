@@ -1,6 +1,6 @@
 import sqlite3
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Dict
 
 DB_PATH = Path("data/system.db")
@@ -32,7 +32,7 @@ def add_file(username: str, tenant_id: str, filename: str, path: str) -> None:
     cursor = conn.cursor()
     cursor.execute(
         "INSERT INTO files (username, tenant_id, filename, path, uploaded_at) VALUES (?, ?, ?, ?, ?)",
-        (username, tenant_id, filename, path, datetime.utcnow().isoformat()),
+        (username, tenant_id, filename, path, datetime.now(timezone.utc).isoformat()),
     )
     conn.commit()
     conn.close()

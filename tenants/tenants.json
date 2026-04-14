@@ -160,5 +160,32 @@
     ],
     "model_type": "ollama",
     "model_name": "llama3"
+  },
+  "financebench": {
+    "name": "S&P 500 Fundamentals",
+    "description": "SEC 10-K filings + daily bars + company profiles.",
+    "db_type": "sqlite",
+    "db_config": {
+      "path": "data/financebench.db"
+    },
+    "models": [
+      {
+        "provider": "ollama",
+        "name": "llama3",
+        "label": "Local Llama 3"
+      },
+      {
+        "provider": "openai",
+        "name": "gpt-4o-mini",
+        "label": "GPT-4o mini"
+      },
+      {
+        "provider": "anthropic",
+        "name": "claude-opus-4-6",
+        "label": "Claude Opus 4.6"
+      }
+    ],
+    "model_type": "ollama",
+    "model_name": "llama3"
   }
 }

@@ -1,7 +1,7 @@
 import sqlite3
 from pathlib import Path
 from typing import Optional, Dict, List
-from datetime import datetime
+from datetime import datetime, timezone
 
 from passlib.hash import bcrypt
 
@@ -73,7 +73,7 @@ def init_db() -> None:
 
 
 def _current_time() -> str:
-    return datetime.utcnow().isoformat()
+    return datetime.now(timezone.utc).isoformat()
 
 
 def create_user(username: str, password: str, role: str, tenant_id: Optional[str] = None) -> None:

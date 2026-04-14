@@ -55,9 +55,9 @@ def get(key: str, default: str | None = None) -> str | None:
 
 def set_many(values: Dict[str, str]) -> None:
     """Upsert multiple settings. Empty string clears a setting (falls back to env)."""
-    from datetime import datetime
+    from datetime import datetime, timezone
 
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).isoformat()
     conn = _conn()
     try:
         for k, v in values.items():

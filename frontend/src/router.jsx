@@ -7,6 +7,9 @@ import Users from './pages/Users';
 import RagVisualizer from './pages/RagVisualizer';
 import Settings from './pages/Settings';
 import Vault from './pages/Vault';
+import AuditLog from './pages/AuditLog';
+import CrossTenantSearch from './pages/CrossTenantSearch';
+import UsageDashboard from './pages/UsageDashboard';
 
 function PrivateRoute({ children, allowedRoles }) {
   const token = localStorage.getItem('access_token');
@@ -56,6 +59,30 @@ export default function AppRouter() {
           element={
             <PrivateRoute allowedRoles={['super_admin']}>
               <Settings />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/audit"
+          element={
+            <PrivateRoute allowedRoles={['super_admin']}>
+              <AuditLog />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/search"
+          element={
+            <PrivateRoute allowedRoles={['super_admin']}>
+              <CrossTenantSearch />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/usage"
+          element={
+            <PrivateRoute allowedRoles={['super_admin']}>
+              <UsageDashboard />
             </PrivateRoute>
           }
         />

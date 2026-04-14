@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 import jwt
@@ -35,7 +35,7 @@ def login(req: LoginRequest):
             "sub": user["username"],
             "role": user["role"],
             "tenant_id": user["tenant_id"],
-            "exp": datetime.utcnow() + timedelta(hours=12),
+            "exp": datetime.now(timezone.utc) + timedelta(hours=12),
         },
         SECRET_KEY,
         algorithm=ALGORITHM,

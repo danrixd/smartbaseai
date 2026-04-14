@@ -8,6 +8,7 @@ import logging
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel
 
+from ai.chunking import MAX_CHUNK_CHARS, chunk_text
 from ai.vector_stores.chroma_store import TenantVectorStore
 from db import file_repository, audit_log_repository
 from .auth_middleware import get_current_user
@@ -45,11 +46,12 @@ class VaultFileUpdate(BaseModel):
 
 
 def _ingest_file_into_tenant_store(tenant_id: str, path: Path, filename: str) -> bool:
-    """Read a text file and push it into the tenant's vector store.
+    """Read a text file, chunk it, and push it into the tenant's vector store.
 
-    Uses a stable per-tenant doc_id (``{tenant}:{filename}``) so that editing
-    or re-uploading a file replaces the existing vector rather than growing
-    the collection.
+    Matches the financebench loader's layout: stable doc_ids of the form
+    ``{tenant}:{filename}#{chunk_idx}``. Before inserting the new chunks,
+    it drops any existing chunks under the same ``{tenant}:{filename}#``
+    prefix so edits and re-uploads don't accumulate stale vectors.
     """
     if path.suffix.lower() not in INGESTIBLE_SUFFIXES:
         logger.info("Skipping ingestion for unsupported file type: %s", filename)
@@ -61,15 +63,38 @@ def _ingest_file_into_tenant_store(tenant_id: str, path: Path, filename: str) ->
         return False
     if not text.strip():
         return False
+
     store = TenantVectorStore(tenant_id)
-    doc_id = f"{tenant_id}:{filename}"
+    base_id = f"{tenant_id}:{filename}"
+    # Delete every chunk under this file's prefix (stale from prior ingests).
     try:
-        store.collection.delete(ids=[doc_id])
+        existing = store.collection.get(where={"filename": filename})
+        ids_to_drop = [i for i in (existing or {}).get("ids", []) if i.startswith(base_id)]
+        if ids_to_drop:
+            store.collection.delete(ids=ids_to_drop)
+    except Exception as exc:
+        logger.debug("chunk cleanup skipped for %s: %s", filename, exc)
+    # Also delete the legacy single-doc shape for backwards compat
+    try:
+        store.collection.delete(ids=[base_id])
     except Exception:
         pass
-    store.add_document(
-        doc_id, text, {"filename": filename, "source": "upload", "tenant": tenant_id}
-    )
+
+    chunks = chunk_text(text, target_tokens=500)
+    if not chunks:
+        return False
+    for i, chunk in enumerate(chunks):
+        doc_id = f"{base_id}#{i}"
+        meta = {
+            "filename": filename,
+            "source": "vault-edit",
+            "tenant": tenant_id,
+            "chunk_idx": i,
+        }
+        try:
+            store.add_document(doc_id, chunk[:MAX_CHUNK_CHARS], meta)
+        except Exception as exc:
+            logger.warning("ingest failed on %s: %s", doc_id, exc)
     return True
 
 
@@ -214,17 +239,10 @@ def update_vault_file(
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(data.content, encoding="utf-8")
 
-    store = TenantVectorStore(tenant)
-    doc_id = f"{tenant}:{filename}"
-    try:
-        store.collection.delete(ids=[doc_id])
-    except Exception:
-        pass
-    store.add_document(
-        doc_id,
-        data.content,
-        {"filename": filename, "source": "vault-edit", "tenant": tenant},
-    )
+    # Use the shared ingestion helper so the Vault editor's re-ingest
+    # matches the loader: chunked with section metadata, deletes all
+    # {tenant}:{filename}#* before inserting fresh chunks.
+    _ingest_file_into_tenant_store(tenant, path, filename)
     audit_log_repository.log_action(user["username"], "edit_vault_file", f"{tenant}:{filename}")
     return {
         "tenant_id": tenant,
