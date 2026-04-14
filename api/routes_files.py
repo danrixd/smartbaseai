@@ -20,6 +20,7 @@ VAULT_ROOTS = {
     "relativity": Path("data/relativity"),
     "saas-ai": Path("data/saas-ai"),
     "smartbase-docs": Path("data/smartbase-docs"),
+    "financebench": Path("data/financebench"),
 }
 VAULT_FALLBACK = Path("data/vaults")
 INGESTIBLE_SUFFIXES = {".txt", ".md", ".markdown", ".csv", ".log"}
@@ -122,36 +123,62 @@ def _resolve_tenant(user: dict, tenant_id: str | None) -> str:
 
 
 def _safe_vault_path(tenant_id: str, filename: str) -> Path:
-    if not SAFE_NAME_RE.match(filename):
+    """Resolve ``filename`` under the tenant's vault root, rejecting traversal.
+
+    ``filename`` can be a bare name (``profile.md``) or a nested path
+    (``AAPL/10k_2022.md``) using forward slashes. Every path segment must
+    match SAFE_NAME_RE, and the resolved path must live inside the vault
+    root — otherwise we raise 400 rather than serve a file outside the vault.
+    """
+    if not filename or filename.startswith("/"):
         raise HTTPException(status_code=400, detail="invalid filename")
-    root = _vault_root(tenant_id)
-    path = (root / filename).resolve()
-    if root.resolve() not in path.parents and path.parent != root.resolve():
+    parts = filename.replace("\\", "/").split("/")
+    if any(p in ("", "..", ".") for p in parts):
+        raise HTTPException(status_code=400, detail="invalid filename")
+    for p in parts:
+        if not SAFE_NAME_RE.match(p):
+            raise HTTPException(status_code=400, detail="invalid filename")
+    root = _vault_root(tenant_id).resolve()
+    path = (root / "/".join(parts)).resolve()
+    try:
+        path.relative_to(root)
+    except ValueError:
         raise HTTPException(status_code=400, detail="path traversal rejected")
     return path
 
 
 @router.get("/vault")
 def list_vault(tenant_id: str | None = None, user=Depends(get_current_user)):
-    """List the editable files in the current tenant's vault."""
+    """List the editable files in the current tenant's vault.
+
+    Walks recursively so tenants like ``financebench`` whose content is
+    organized under per-ticker subdirectories show all their files. Each
+    entry's ``filename`` is the POSIX path relative to the vault root.
+    """
     tenant = _resolve_tenant(user, tenant_id)
     root = _vault_root(tenant)
     files = []
     if root.exists():
-        for path in sorted(root.glob("*")):
+        for path in sorted(root.rglob("*")):
+            if not path.is_file():
+                continue
             if path.suffix.lower() not in INGESTIBLE_SUFFIXES:
+                continue
+            try:
+                rel = path.relative_to(root).as_posix()
+            except ValueError:
                 continue
             files.append(
                 {
-                    "filename": path.name,
+                    "filename": rel,
                     "size": path.stat().st_size,
                     "suffix": path.suffix.lower(),
                 }
             )
-    return {"tenant_id": tenant, "root": str(root), "files": files}
+    return {"tenant_id": tenant, "root": str(root), "count": len(files), "files": files}
 
 
-@router.get("/vault/{filename}")
+@router.get("/vault/{filename:path}")
 def read_vault_file(filename: str, tenant_id: str | None = None, user=Depends(get_current_user)):
     tenant = _resolve_tenant(user, tenant_id)
     path = _safe_vault_path(tenant, filename)
@@ -164,7 +191,7 @@ def read_vault_file(filename: str, tenant_id: str | None = None, user=Depends(ge
     }
 
 
-@router.put("/vault/{filename}")
+@router.put("/vault/{filename:path}")
 def update_vault_file(
     filename: str,
     data: VaultFileUpdate,
