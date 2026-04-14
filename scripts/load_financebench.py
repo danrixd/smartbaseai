@@ -242,12 +242,52 @@ def phase_fb_groundtruth() -> int:
 
 
 def load_sp500_universe() -> list[dict]:
-    """Scrape Wikipedia for current S&P 500 constituents. Returns [{ticker, name, sector}]."""
-    import pandas as pd
+    """Fetch the current S&P 500 constituents. Returns [{ticker, name, sector}].
 
-    url = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
+    Tries the datasets/s-and-p-500-companies CSV on GitHub first (stable,
+    permissively hosted, no UA blocking). Falls back to scraping Wikipedia
+    with a real browser User-Agent if the CSV is unreachable.
+    """
+    import csv
+    import io
+    import urllib.request
+
+    # Primary: GitHub CSV (no UA shenanigans)
+    csv_url = (
+        "https://raw.githubusercontent.com/datasets/s-and-p-500-companies/"
+        "main/data/constituents.csv"
+    )
     try:
-        tables = pd.read_html(url)
+        req = urllib.request.Request(
+            csv_url,
+            headers={"User-Agent": "Mozilla/5.0 (SmartBaseAI loader)"},
+        )
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            text = resp.read().decode("utf-8")
+        reader = csv.DictReader(io.StringIO(text))
+        out = []
+        for row in reader:
+            sym = (row.get("Symbol") or "").strip().replace(".", "-")
+            name = (row.get("Name") or "").strip()
+            sector = (row.get("Sector") or "").strip()
+            if sym and name:
+                out.append({"ticker": sym, "name": name, "sector": sector})
+        if out:
+            print(f"[sp500] loaded {len(out)} constituents from datasets.io CSV")
+            return out
+    except Exception as e:
+        print(f"[sp500] CSV fetch failed ({type(e).__name__}: {str(e)[:80]}); trying Wikipedia fallback")
+
+    # Fallback: Wikipedia with a real UA (pandas.read_html doesn't let us set UA
+    # directly, so we fetch the HTML via requests and pass the text to pandas).
+    try:
+        import pandas as pd
+        import requests
+
+        url = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
+        r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=20)
+        r.raise_for_status()
+        tables = pd.read_html(io.StringIO(r.text))
         df = tables[0]
         out = []
         for _, row in df.iterrows():
@@ -256,10 +296,10 @@ def load_sp500_universe() -> list[dict]:
             sector = str(row.get("GICS Sector", "")).strip()
             if sym and name:
                 out.append({"ticker": sym, "name": name, "sector": sector})
-        print(f"[sp500] scraped {len(out)} constituents from Wikipedia")
+        print(f"[sp500] scraped {len(out)} constituents from Wikipedia (fallback)")
         return out
     except Exception as e:
-        print(f"[sp500] Wikipedia scrape failed ({e}); falling back to FB-only universe")
+        print(f"[sp500] all sources failed ({type(e).__name__}: {str(e)[:80]}); FB-only universe")
         return []
 
 
@@ -449,54 +489,122 @@ def phase_extra_10ks(tickers: list[str], user_agent: str, tqdm) -> int:
 # Phase 6: ingest into tenant
 
 
+MAX_CHUNK_CHARS = 2000  # Hard cap so the embedder never sees anything it can't handle.
+
+
+def _hard_split(s: str, max_chars: int) -> list[str]:
+    """Force-split a blob that has no paragraph breaks into max_chars slices."""
+    parts: list[str] = []
+    i = 0
+    while i < len(s):
+        end = min(i + max_chars, len(s))
+        # Try to break on a whitespace inside the last 10% of the window.
+        if end < len(s):
+            window_start = end - max_chars // 10
+            slice_ = s[window_start:end]
+            m = re.search(r"\s(?=\S*$)", slice_)
+            if m:
+                end = window_start + m.start()
+        parts.append(s[i:end].strip())
+        i = end
+    return [p for p in parts if p]
+
+
 def chunk_text(text: str, target_tokens: int = 500) -> list[str]:
-    """Very rough chunker: split on blank lines, pack until ~target_tokens words."""
-    paragraphs = [p.strip() for p in re.split(r"\n\s*\n", text) if p.strip()]
+    """Chunker with a hard MAX_CHUNK_CHARS cap so no single chunk is enormous.
+
+    1. Split on blank lines (paragraphs).
+    2. Hard-split any individual paragraph longer than MAX_CHUNK_CHARS.
+    3. Pack paragraphs into chunks of ~target_tokens words, but never exceed
+       MAX_CHUNK_CHARS characters per chunk.
+
+    This is the fix for the ingest-phase segfault — extracted 10-K text from
+    pypdf can contain giant "paragraphs" (tables merged into one blob,
+    missing line breaks) that blow up the tokenizer. Capping at 2K chars
+    bounds what sentence-transformers ever sees.
+    """
+    paragraphs: list[str] = []
+    for p in re.split(r"\n\s*\n", text):
+        p = p.strip()
+        if not p:
+            continue
+        if len(p) > MAX_CHUNK_CHARS:
+            paragraphs.extend(_hard_split(p, MAX_CHUNK_CHARS))
+        else:
+            paragraphs.append(p)
+
     chunks: list[str] = []
     buf: list[str] = []
-    size = 0
+    size_words = 0
+    size_chars = 0
     for p in paragraphs:
         words = len(p.split())
-        if size + words > target_tokens and buf:
+        added_chars = len(p) + 2  # for the "\n\n" joiner
+        if buf and (size_words + words > target_tokens or size_chars + added_chars > MAX_CHUNK_CHARS):
             chunks.append("\n\n".join(buf))
             buf = [p]
-            size = words
+            size_words = words
+            size_chars = len(p)
         else:
             buf.append(p)
-            size += words
+            size_words += words
+            size_chars += added_chars
     if buf:
         chunks.append("\n\n".join(buf))
-    return chunks
+    # Belt-and-braces — drop any empty chunks or anything over the cap.
+    return [c[:MAX_CHUNK_CHARS] for c in chunks if c.strip()]
 
 
-def phase_ingest(tqdm) -> tuple[int, int]:
-    """Walk data/financebench/ and push every .md into the tenant Chroma collection."""
+def phase_ingest(tqdm, force_cpu: bool = True) -> tuple[int, int]:
+    """Walk data/financebench/ and push every .md into the tenant Chroma collection.
+
+    ``force_cpu=True`` (default) pins sentence-transformers to CPU for this
+    phase. The Large-tier first run crashed with a CUDA segfault during the
+    first batch; CPU is slower but stable. Set force_cpu=False to use GPU.
+    """
+    if force_cpu:
+        # Must be set before chromadb instantiates the embedding function.
+        import os as _os
+        _os.environ.setdefault("CUDA_VISIBLE_DEVICES", "")
     from ai.vector_stores.chroma_store import TenantVectorStore
 
     store = TenantVectorStore(TENANT_ID)
     # Fresh ingest: drop any previous financebench vectors so reruns are idempotent.
     try:
-        existing = store.collection.get(include=[])
+        existing = store.collection.get(include=["metadatas"])
         if existing and existing.get("ids"):
             store.collection.delete(ids=existing["ids"])
-    except Exception:
-        pass
+            print(f"[ingest] wiped {len(existing['ids'])} stale vectors")
+    except Exception as e:
+        print(f"[ingest] wipe step skipped: {type(e).__name__}: {e}")
 
     md_files = sorted(DATA.rglob("*.md"))
     n_files = 0
     n_chunks = 0
+    n_skipped_files = 0
     for path in tqdm(md_files, desc="[ingest]"):
         try:
-            text = path.read_text(encoding="utf-8")
-        except Exception:
+            text = path.read_text(encoding="utf-8", errors="ignore")
+        except Exception as e:
+            print(f"  [read-error] {path.name}: {e}")
+            n_skipped_files += 1
             continue
         if not text.strip():
+            n_skipped_files += 1
             continue
         ticker = path.parent.name
         filename = path.name
         base_id = f"{TENANT_ID}:{ticker}/{filename}"
-        chunks = chunk_text(text, target_tokens=500)
+        try:
+            chunks = chunk_text(text, target_tokens=500)
+        except Exception as e:
+            print(f"  [chunk-error] {ticker}/{filename}: {e}")
+            n_skipped_files += 1
+            continue
+        file_chunks_ok = 0
         for i, chunk in enumerate(chunks):
+            if not chunk.strip() or len(chunk) > MAX_CHUNK_CHARS:
+                continue
             doc_id = f"{base_id}#{i}"
             meta = {
                 "tenant": TENANT_ID,
@@ -509,9 +617,14 @@ def phase_ingest(tqdm) -> tuple[int, int]:
             try:
                 store.add_document(doc_id, chunk, meta)
                 n_chunks += 1
+                file_chunks_ok += 1
             except Exception as e:
-                print(f"  [ingest-error] {doc_id}: {e}")
-        n_files += 1
+                print(f"  [embed-error] {doc_id}: {type(e).__name__}: {str(e)[:100]}")
+        if file_chunks_ok > 0:
+            n_files += 1
+        else:
+            n_skipped_files += 1
+    print(f"[ingest] files ingested: {n_files}, chunks: {n_chunks}, skipped: {n_skipped_files}")
     return n_files, n_chunks
 
 
