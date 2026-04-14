@@ -8,7 +8,7 @@ from chatbot.response_generator import ResponseGenerator
 from tenants.tenant_manager import TenantManager
 import logging
 
-from db import conversation_repository, audit_log_repository
+from db import conversation_repository, audit_log_repository, rag_trace_repository
 from .auth_middleware import get_current_user
 
 
@@ -24,6 +24,14 @@ class ChatRequest(BaseModel):
     message: str
     model_provider: str | None = None
     model_name: str | None = None
+
+
+class SavedTraceRequest(BaseModel):
+    tenant_id: str
+    title: str | None = None
+    query: str
+    reply: str | None = None
+    trace: dict
 
 
 def _resolve_model(tenant_config: dict, req: ChatRequest) -> tuple[str, str]:
@@ -112,6 +120,64 @@ def chat_trace(req: ChatRequest, user=Depends(get_current_user)):
         model_name=model_name,
     )
     return generator.generate_response_trace(req.message, history)
+
+
+def _check_tenant_access(user: dict, tenant_id: str) -> None:
+    if user.get("role") != "super_admin" and user.get("tenant_id") != tenant_id:
+        raise HTTPException(status_code=403, detail="Tenant access denied")
+
+
+@router.post("/traces")
+def save_trace(req: SavedTraceRequest, user=Depends(get_current_user)):
+    """Persist a RAG trace so it can be reloaded later without re-running the LLM."""
+    tenant_id = (req.tenant_id or "").strip()
+    if not tenant_id:
+        raise HTTPException(status_code=400, detail="tenant_id required")
+    _check_tenant_access(user, tenant_id)
+    trace_id = rag_trace_repository.save_trace(
+        tenant_id=tenant_id,
+        title=(req.title or "").strip() or req.query[:80],
+        query=req.query,
+        reply=req.reply or "",
+        trace=req.trace,
+        created_by=user["username"],
+    )
+    audit_log_repository.log_action(user["username"], "save_rag_trace", f"{tenant_id}:{trace_id}")
+    return {"id": trace_id, "status": "saved"}
+
+
+@router.get("/traces")
+def list_traces(tenant_id: str | None = None, user=Depends(get_current_user)):
+    """List saved traces for a tenant (metadata only, no full trace blob)."""
+    target = (tenant_id or "").strip() or user.get("tenant_id") or ""
+    if not target:
+        raise HTTPException(status_code=400, detail="tenant_id required")
+    _check_tenant_access(user, target)
+    return {"tenant_id": target, "traces": rag_trace_repository.list_traces(target)}
+
+
+@router.get("/traces/{trace_id}")
+def get_saved_trace(trace_id: int, user=Depends(get_current_user)):
+    """Fetch a saved trace including the full trace JSON."""
+    row = rag_trace_repository.get_trace(trace_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="trace not found")
+    _check_tenant_access(user, row["tenant_id"])
+    return row
+
+
+@router.delete("/traces/{trace_id}")
+def delete_saved_trace(trace_id: int, user=Depends(get_current_user)):
+    row = rag_trace_repository.get_trace(trace_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="trace not found")
+    _check_tenant_access(user, row["tenant_id"])
+    # Only the creator or super_admin can delete
+    if user.get("role") != "super_admin" and row.get("created_by") != user["username"]:
+        raise HTTPException(status_code=403, detail="only the creator or super_admin can delete")
+    rag_trace_repository.delete_trace(trace_id)
+    audit_log_repository.log_action(user["username"], "delete_rag_trace", str(trace_id))
+    return {"status": "deleted"}
 
 
 @router.get("/history")

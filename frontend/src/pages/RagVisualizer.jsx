@@ -169,18 +169,93 @@ function DocChip({ entry, index }) {
 export default function RagVisualizer() {
   const { activeTenant } = useContext(AppContext);
   const role = localStorage.getItem('role');
+  const username = localStorage.getItem('username') || '';
   const [query, setQuery] = useState('');
   const [trace, setTrace] = useState(null);
+  const [traceIsSaved, setTraceIsSaved] = useState(false);
+  const [currentSavedId, setCurrentSavedId] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [models, setModels] = useState([]);
   const [selectedModelIdx, setSelectedModelIdx] = useState(0);
 
+  // Saved traces ------------------------------------------------------
+  const [savedTraces, setSavedTraces] = useState([]);
+  const [savedExpanded, setSavedExpanded] = useState(true);
+
+  const loadSaved = async (tenant) => {
+    if (!tenant) {
+      setSavedTraces([]);
+      return;
+    }
+    try {
+      const res = await api.get('/chat/traces', { params: { tenant_id: tenant } });
+      setSavedTraces(res.data?.traces || []);
+    } catch {
+      setSavedTraces([]);
+    }
+  };
+
+  const saveCurrentTrace = async () => {
+    if (!trace || !activeTenant) return;
+    let title = prompt('Title for this saved trace:', trace.query?.slice(0, 80) || '');
+    if (title === null) return; // cancelled
+    title = title.trim() || trace.query?.slice(0, 80) || '';
+    try {
+      const res = await api.post('/chat/traces', {
+        tenant_id: activeTenant,
+        title,
+        query: trace.query,
+        reply: trace.reply,
+        trace,
+      });
+      setTraceIsSaved(true);
+      setCurrentSavedId(res.data?.id || null);
+      await loadSaved(activeTenant);
+    } catch (err) {
+      setError(err.response?.data?.detail || err.message || 'save failed');
+    }
+  };
+
+  const loadSavedTrace = async (id) => {
+    setLoading(true);
+    setError('');
+    try {
+      const res = await api.get(`/chat/traces/${id}`);
+      setTrace(res.data.trace);
+      setQuery(res.data.query);
+      setTraceIsSaved(true);
+      setCurrentSavedId(res.data.id);
+    } catch (err) {
+      setError(err.response?.data?.detail || err.message || 'load failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const deleteSavedTrace = async (id, e) => {
+    e.stopPropagation();
+    if (!confirm('Delete this saved trace?')) return;
+    try {
+      await api.delete(`/chat/traces/${id}`);
+      if (id === currentSavedId) {
+        setTraceIsSaved(false);
+        setCurrentSavedId(null);
+      }
+      await loadSaved(activeTenant);
+    } catch (err) {
+      setError(err.response?.data?.detail || err.message || 'delete failed');
+    }
+  };
+
   useEffect(() => {
     setTrace(null);
     setQuery('');
+    setTraceIsSaved(false);
+    setCurrentSavedId(null);
     if (!activeTenant) {
       setModels([]);
+      setSavedTraces([]);
       return;
     }
     api
@@ -191,6 +266,7 @@ export default function RagVisualizer() {
         setSelectedModelIdx(0);
       })
       .catch(() => setModels([]));
+    loadSaved(activeTenant);
   }, [activeTenant]);
 
   const run = async (q) => {
@@ -198,6 +274,8 @@ export default function RagVisualizer() {
     if (!message || !activeTenant) return;
     setLoading(true);
     setError('');
+    setTraceIsSaved(false);
+    setCurrentSavedId(null);
     try {
       const chosen = models[selectedModelIdx];
       const body = {
@@ -217,6 +295,21 @@ export default function RagVisualizer() {
       setTrace(null);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const formatWhen = (iso) => {
+    if (!iso) return '';
+    try {
+      const d = new Date(iso + 'Z');
+      return d.toLocaleString(undefined, {
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+    } catch {
+      return iso.slice(0, 16);
     }
   };
 
@@ -294,6 +387,80 @@ export default function RagVisualizer() {
                 {error}
               </div>
             )}
+
+            {/* Saved traces — reload without spending tokens */}
+            <div className="mt-4 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                className="w-full flex items-center justify-between text-xs font-semibold text-slate-600 uppercase tracking-wide hover:text-slate-800"
+                onClick={() => setSavedExpanded((v) => !v)}
+              >
+                <span className="flex items-center gap-2">
+                  <span>{savedExpanded ? '▾' : '▸'}</span>
+                  <span>Saved traces</span>
+                  <span className="text-slate-400 font-normal normal-case">
+                    ({savedTraces.length})
+                  </span>
+                </span>
+                <span className="text-[10px] text-slate-400 font-normal normal-case">
+                  click to reload without re-running the LLM
+                </span>
+              </button>
+              {savedExpanded && (
+                <div className="mt-2">
+                  {savedTraces.length === 0 ? (
+                    <div className="text-[11px] text-slate-400 italic">
+                      No saved traces yet — run a query, then click "💾 Save trace" on the
+                      pipeline diagram to capture it for reuse.
+                    </div>
+                  ) : (
+                    <ul className="space-y-1 max-h-56 overflow-y-auto">
+                      {savedTraces.map((t) => {
+                        const isCurrent = t.id === currentSavedId;
+                        return (
+                          <li key={t.id}>
+                            <button
+                              className={`w-full text-left text-xs p-2 rounded border flex items-start gap-2 ${
+                                isCurrent
+                                  ? 'bg-indigo-50 border-indigo-300'
+                                  : 'bg-white border-slate-200 hover:bg-slate-50'
+                              }`}
+                              onClick={() => loadSavedTrace(t.id)}
+                            >
+                              <span className="flex-shrink-0 text-indigo-500">💾</span>
+                              <div className="flex-1 min-w-0">
+                                <div className="font-semibold text-slate-800 truncate">
+                                  {t.title}
+                                </div>
+                                <div className="text-[10px] text-slate-500 truncate">
+                                  {t.query}
+                                </div>
+                                <div className="text-[10px] text-slate-400 mt-0.5">
+                                  {t.created_by} · {formatWhen(t.created_at)}
+                                  {t.reply_len
+                                    ? ` · reply ${t.reply_len} chars`
+                                    : ''}
+                                </div>
+                              </div>
+                              {(role === 'super_admin' || t.created_by === username) && (
+                                <button
+                                  type="button"
+                                  className="flex-shrink-0 text-slate-400 hover:text-rose-600 text-xs px-1"
+                                  onClick={(e) => deleteSavedTrace(t.id, e)}
+                                  title="Delete saved trace"
+                                >
+                                  ✕
+                                </button>
+                              )}
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Pipeline */}
@@ -306,6 +473,27 @@ export default function RagVisualizer() {
           {trace && (
             <>
               <div className="bg-white rounded-lg border border-slate-200 p-6 mb-6 shadow-sm">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="text-xs text-slate-500">
+                    {traceIsSaved ? (
+                      <span className="text-emerald-700">
+                        ✓ Saved trace #{currentSavedId}
+                      </span>
+                    ) : (
+                      <span>Unsaved — click "Save trace" to keep this view.</span>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    className="text-xs px-3 py-1 rounded border disabled:opacity-50 disabled:cursor-not-allowed
+                      bg-indigo-50 hover:bg-indigo-100 border-indigo-200 text-indigo-800
+                      disabled:bg-slate-50 disabled:text-slate-500 disabled:border-slate-200"
+                    onClick={saveCurrentTrace}
+                    disabled={traceIsSaved}
+                  >
+                    💾 Save trace
+                  </button>
+                </div>
                 <div className="flex flex-col lg:flex-row lg:items-stretch lg:justify-center gap-3">
                   {/* Query */}
                   <StageCard title="1. User query" tone="slate">
