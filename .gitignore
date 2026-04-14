@@ -19,6 +19,8 @@ frontend/dist/
 vector_store/
 data/*.db
 data/uploads/
+data/financebench/
+data/_downloads/
 embeddings.json
 
 # Virtual envs
