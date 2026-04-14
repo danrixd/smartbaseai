@@ -1,18 +1,164 @@
 {
-  "tenant1": {
-    "name": "Tenant 1",
-    "db_type": "postgres",
+  "personal": {
+    "name": "Personal Knowledge Vault",
+    "description": "A single user's private notes, routines, and contacts.",
+    "db_type": "sqlite",
     "db_config": {
-      "host": "localhost",
-      "user": "user1"
-    }
+      "path": "data/personal.db"
+    },
+    "model_type": "anthropic",
+    "model_name": "claude-opus-4-6",
+    "models": [
+      {
+        "provider": "anthropic",
+        "name": "claude-opus-4-6",
+        "label": "anthropic/claude-opus-4-6"
+      },
+      {
+        "provider": "openai",
+        "name": "gpt-4o-mini",
+        "label": "openai/gpt-4o-mini"
+      },
+      {
+        "provider": "ollama",
+        "name": "llama3",
+        "label": "ollama/llama3"
+      }
+    ]
   },
-  "tenant2": {
-    "name": "Tenant 2",
-    "db_type": "postgres",
+  "company": {
+    "name": "Acme Analytics \u2014 Company Vault",
+    "description": "Acme Analytics product docs, policies, FAQ, and market data.",
+    "db_type": "sqlite",
     "db_config": {
-      "host": "localhost",
-      "user": "dan"
-    }
+      "path": "data/company.db"
+    },
+    "model_type": "ollama",
+    "model_name": "llama3",
+    "models": [
+      {
+        "provider": "ollama",
+        "name": "llama3",
+        "label": "Local Llama 3"
+      },
+      {
+        "provider": "openai",
+        "name": "gpt-4o-mini",
+        "label": "GPT-4o mini"
+      },
+      {
+        "provider": "anthropic",
+        "name": "claude-opus-4-6",
+        "label": "Claude Opus 4.6"
+      }
+    ]
+  },
+  "organization": {
+    "name": "Project Lunar Harbor \u2014 Organization Vault",
+    "description": "Fictional multi-agency Moon program: mission overview, work plan, non-public contingencies.",
+    "db_type": "sqlite",
+    "db_config": {
+      "path": "data/organization.db"
+    },
+    "model_type": "ollama",
+    "model_name": "llama3",
+    "models": [
+      {
+        "provider": "ollama",
+        "name": "llama3",
+        "label": "Local Llama 3"
+      },
+      {
+        "provider": "openai",
+        "name": "gpt-4o-mini",
+        "label": "GPT-4o mini"
+      },
+      {
+        "provider": "anthropic",
+        "name": "claude-opus-4-6",
+        "label": "Claude Opus 4.6"
+      }
+    ]
+  },
+  "relativity": {
+    "name": "General Relativity Research Vault",
+    "description": "Lab notebook, Hubble-tension notes, ringdown method, reading list.",
+    "db_type": "sqlite",
+    "db_config": {
+      "path": "data/relativity.db"
+    },
+    "models": [
+      {
+        "provider": "ollama",
+        "name": "llama3",
+        "label": "Local Llama 3"
+      },
+      {
+        "provider": "openai",
+        "name": "gpt-4o-mini",
+        "label": "GPT-4o mini"
+      },
+      {
+        "provider": "anthropic",
+        "name": "claude-opus-4-6",
+        "label": "Claude Opus 4.6"
+      }
+    ],
+    "model_type": "ollama",
+    "model_name": "llama3"
+  },
+  "saas-ai": {
+    "name": "SaaS in the Age of AI",
+    "description": "Unit economics, competitive moats, and a pricing playbook for AI-native SaaS.",
+    "db_type": "sqlite",
+    "db_config": {
+      "path": "data/saas-ai.db"
+    },
+    "models": [
+      {
+        "provider": "ollama",
+        "name": "llama3",
+        "label": "Local Llama 3"
+      },
+      {
+        "provider": "openai",
+        "name": "gpt-4o-mini",
+        "label": "GPT-4o mini"
+      },
+      {
+        "provider": "anthropic",
+        "name": "claude-opus-4-6",
+        "label": "Claude Opus 4.6"
+      }
+    ],
+    "model_type": "ollama",
+    "model_name": "llama3"
+  },
+  "smartbase-docs": {
+    "name": "SmartBaseAI \u2014 Product Documentation",
+    "description": "How to use SmartBaseAI, what the RAG Visualizer shows, and the company value pitch.",
+    "db_type": "sqlite",
+    "db_config": {
+      "path": "data/smartbase-docs.db"
+    },
+    "models": [
+      {
+        "provider": "ollama",
+        "name": "llama3",
+        "label": "Local Llama 3"
+      },
+      {
+        "provider": "openai",
+        "name": "gpt-4o-mini",
+        "label": "GPT-4o mini"
+      },
+      {
+        "provider": "anthropic",
+        "name": "claude-opus-4-6",
+        "label": "Claude Opus 4.6"
+      }
+    ],
+    "model_type": "ollama",
+    "model_name": "llama3"
   }
 }
