@@ -1,9 +1,12 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import Layout from './components/Layout';
 import Login from './pages/Login';
 import Chat from './pages/Chat';
-import Files from './pages/Files';
 import Tenants from './pages/Tenants';
 import Users from './pages/Users';
+import RagVisualizer from './pages/RagVisualizer';
+import Settings from './pages/Settings';
+import Vault from './pages/Vault';
 
 function PrivateRoute({ children, allowedRoles }) {
   const token = localStorage.getItem('access_token');
@@ -12,7 +15,11 @@ function PrivateRoute({ children, allowedRoles }) {
   if (!token) return <Navigate to="/login" />;
   if (allowedRoles && !allowedRoles.includes(role)) return <Navigate to="/chat" />;
 
-  return children;
+  // Layout wraps every authenticated page so its AppContext.Provider is an
+  // ancestor of the page. Without this, pages that call useContext(AppContext)
+  // would read the default empty context — the Provider inside a child Layout
+  // wouldn't reach them, and activeTenant would never update.
+  return <Layout>{children}</Layout>;
 }
 
 export default function AppRouter() {
@@ -29,10 +36,26 @@ export default function AppRouter() {
           }
         />
         <Route
-          path="/files"
+          path="/rag"
           element={
             <PrivateRoute allowedRoles={['user', 'admin', 'super_admin']}>
-              <Files />
+              <RagVisualizer />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/vault"
+          element={
+            <PrivateRoute allowedRoles={['user', 'admin', 'super_admin']}>
+              <Vault />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/settings"
+          element={
+            <PrivateRoute allowedRoles={['super_admin']}>
+              <Settings />
             </PrivateRoute>
           }
         />

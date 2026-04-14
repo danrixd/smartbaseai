@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import Layout from '../components/Layout';
 import api from '../api/api';
 
 export default function Users() {
@@ -58,7 +57,6 @@ export default function Users() {
   };
 
   return (
-    <Layout>
       <div className="p-4 flex-1 overflow-y-auto">
         <div className="max-w-3xl mx-auto">
           <form onSubmit={submitUser} className="mb-4 grid grid-cols-1 md:grid-cols-2 gap-2">
@@ -152,6 +150,5 @@ export default function Users() {
           </table>
         </div>
       </div>
-    </Layout>
   );
 }
