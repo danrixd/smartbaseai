@@ -22,6 +22,26 @@ class ChatRequest(BaseModel):
     session_id: str
     tenant_id: str
     message: str
+    model_provider: str | None = None
+    model_name: str | None = None
+
+
+def _resolve_model(tenant_config: dict, req: ChatRequest) -> tuple[str, str]:
+    """Pick the (provider, model_name) for this request.
+
+    Priority: explicit request override → tenant's ``models[0]`` default →
+    legacy ``model_type``/``model_name`` fallback → ollama/llama3.
+    """
+    if req.model_provider:
+        return req.model_provider, req.model_name or ""
+    models = tenant_config.get("models") or []
+    if models:
+        first = models[0]
+        return first.get("provider", "ollama"), first.get("name") or first.get("model_name", "")
+    return (
+        tenant_config.get("model_type", "ollama"),
+        tenant_config.get("model_name", "llama3.2"),
+    )
 
 
 @router.post("/message")
@@ -36,8 +56,7 @@ def chat_message(req: ChatRequest, user=Depends(get_current_user)):
     if tenant_config is None:
         raise HTTPException(status_code=404, detail="Tenant not found")
 
-    model_type = tenant_config.get("model_type", "ollama")
-    model_name = tenant_config.get("model_name", "llama3.2")
+    model_type, model_name = _resolve_model(tenant_config, req)
 
     conversation_manager.start_session(req.session_id)
     conversation_manager.add_message(req.session_id, "user", req.message)
@@ -66,6 +85,33 @@ def chat_message(req: ChatRequest, user=Depends(get_current_user)):
             req.session_id, user["username"]
         ),
     }
+
+
+@router.post("/trace")
+def chat_trace(req: ChatRequest, user=Depends(get_current_user)):
+    """Run a chat query and return the full pipeline trace for visualization.
+
+    This endpoint is intentionally read-only with respect to the conversation
+    store — it does not append to history or write audit logs — so the RAG
+    visualizer can run experimental queries without polluting real sessions.
+    """
+    tenant_id = req.tenant_id.strip()
+    if user.get("role") != "super_admin" and user.get("tenant_id") != tenant_id:
+        raise HTTPException(status_code=403, detail="Tenant access denied")
+
+    tenant_config = tenant_manager.get(tenant_id)
+    if tenant_config is None:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    model_type, model_name = _resolve_model(tenant_config, req)
+
+    history = conversation_manager.history(req.session_id)
+    generator = ResponseGenerator(
+        tenant_id=tenant_id,
+        model_type=model_type,
+        model_name=model_name,
+    )
+    return generator.generate_response_trace(req.message, history)
 
 
 @router.get("/history")

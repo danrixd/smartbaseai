@@ -5,8 +5,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from tenants.tenant_manager import TenantManager
-from db import user_repository, audit_log_repository
+from db import user_repository, audit_log_repository, settings_repository
 from .auth_middleware import require_role
+from ai.models.anthropic_model import AnthropicModel
+from ai.models.openai_model import OpenAIModel
+from ai.models.ollama_model import OllamaModel
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 manager = TenantManager()
@@ -29,6 +32,18 @@ class UserUpdate(BaseModel):
     role: str | None = None
 
 
+class SettingsUpdate(BaseModel):
+    anthropic_api_key: str | None = None
+    openai_api_key: str | None = None
+    ollama_base_url: str | None = None
+
+
+class ModelTestRequest(BaseModel):
+    provider: str
+    api_key: str | None = None
+    base_url: str | None = None
+
+
 @router.get("/tenants")
 def list_tenants(user=Depends(require_role(["super_admin"]))):
     """Return all tenant identifiers (super admins only)."""
@@ -49,7 +64,10 @@ def create_tenant(data: TenantData, user=Depends(require_role(["super_admin"])))
     """Create a new tenant."""
     if not data.tenant_id:
         raise HTTPException(status_code=400, detail="tenant_id required")
-    manager.create(data.tenant_id, data.config)
+    try:
+        manager.create(data.tenant_id, data.config)
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
     audit_log_repository.log_action(user["username"], "create_tenant", data.tenant_id)
     return {"status": "created"}
 
@@ -59,7 +77,10 @@ def update_tenant(tenant_id: str, data: TenantData, user=Depends(require_role(["
     """Update an existing tenant configuration."""
     if manager.get(tenant_id) is None:
         raise HTTPException(status_code=404, detail="Tenant not found")
-    manager.create(tenant_id, data.config)
+    try:
+        manager.update(tenant_id, data.config)
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e))
     audit_log_repository.log_action(user["username"], "update_tenant", tenant_id)
     return {"status": "updated"}
 
@@ -89,7 +110,12 @@ def create_user(data: UserData, user=Depends(require_role(["super_admin", "admin
         data.tenant_id = user["tenant_id"]
         if data.role == "super_admin":
             raise HTTPException(status_code=403, detail="Cannot create super_admin")
-    user_repository.create_user(data.username, data.password, data.role, data.tenant_id)
+    if user_repository.get_user(data.username) is not None:
+        raise HTTPException(status_code=409, detail="User already exists")
+    try:
+        user_repository.create_user(data.username, data.password, data.role, data.tenant_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     audit_log_repository.log_action(user["username"], "create_user", data.username)
     return {"status": "created"}
 
@@ -108,6 +134,58 @@ def update_user(username: str, data: UserUpdate, user=Depends(require_role(["sup
         user_repository.update_user_role(username, data.role)
         audit_log_repository.log_action(user["username"], "update_user_role", f"{username}:{data.role}")
     return {"status": "updated"}
+
+
+@router.get("/settings")
+def get_settings(user=Depends(require_role(["super_admin"]))):
+    """Return masked runtime settings for the admin UI."""
+    return settings_repository.all_masked()
+
+
+@router.put("/settings")
+def put_settings(data: SettingsUpdate, user=Depends(require_role(["super_admin"]))):
+    """Upsert runtime settings. Empty string clears a value (fall back to env)."""
+    payload = {k: v for k, v in data.model_dump().items() if v is not None}
+    settings_repository.set_many(payload)
+    audit_log_repository.log_action(
+        user["username"], "update_settings", ",".join(payload.keys())
+    )
+    return settings_repository.all_masked()
+
+
+@router.get("/models/status")
+def models_status(user=Depends(require_role(["user", "admin", "super_admin"]))):
+    """Live connectivity check for every supported model backend.
+
+    Callable by any authenticated role so the sidebar indicator can show real
+    status for regular users too. Does not leak API keys.
+    """
+    ollama_ok, ollama_detail = OllamaModel.ping()
+    openai_ok, openai_detail = OpenAIModel.ping()
+    anthropic_ok, anthropic_detail = AnthropicModel.ping()
+    return {
+        "ollama": {"ok": ollama_ok, "detail": ollama_detail},
+        "openai": {"ok": openai_ok, "detail": openai_detail},
+        "anthropic": {"ok": anthropic_ok, "detail": anthropic_detail},
+    }
+
+
+@router.post("/models/test")
+def models_test(
+    data: ModelTestRequest,
+    user=Depends(require_role(["super_admin"])),
+):
+    """Test a specific provider, optionally with an override key before saving."""
+    provider = data.provider.lower()
+    if provider == "anthropic":
+        ok, detail = AnthropicModel.ping(api_key=data.api_key)
+    elif provider == "openai":
+        ok, detail = OpenAIModel.ping(api_key=data.api_key)
+    elif provider == "ollama":
+        ok, detail = OllamaModel.ping(base_url=data.base_url)
+    else:
+        raise HTTPException(status_code=400, detail=f"unknown provider: {provider}")
+    return {"provider": provider, "ok": ok, "detail": detail}
 
 
 @router.delete("/users/{username}")

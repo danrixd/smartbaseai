@@ -5,9 +5,7 @@ import jwt
 
 from db import user_repository
 from api.auth_middleware import require_role, get_current_user
-
-SECRET_KEY = "super_secret"
-ALGORITHM = "HS256"
+from api.config import SECRET_KEY, ALGORITHM
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 

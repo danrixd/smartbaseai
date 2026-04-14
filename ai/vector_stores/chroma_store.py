@@ -118,4 +118,131 @@ class TenantVectorStore:
         combined = list(dict.fromkeys(keyword_results + semantic_docs))
         return {"documents": [combined[:n_results]]}
 
+    def store_info(self) -> dict:
+        """Return metadata about the underlying vector collection.
+
+        Used by the RAG visualizer to render a "Vector store" panel alongside
+        the retrieval results — without this, there's no way to see how many
+        vectors were searched or which embedding model produced them.
+        """
+        info: dict = {
+            "collection_name": getattr(self.collection, "name", "documents"),
+            "persist_path": self.persist_path,
+            "tenant_id": self.tenant_id,
+            "count": None,
+            "embedding_model": None,
+            "embedding_dim": None,
+            "device": None,
+        }
+        try:
+            info["count"] = int(self.collection.count())
+        except Exception:
+            try:
+                # Fallback for the in-memory dummy collection
+                docs = self.collection.get(include=["documents"])  # type: ignore[arg-type]
+                info["count"] = len(docs.get("documents", []))
+            except Exception:
+                info["count"] = 0
+
+        fn = getattr(self, "embedding_fn", None)
+        if fn is not None:
+            info["embedding_model"] = getattr(fn, "model_name", None) or type(fn).__name__
+            try:
+                import torch  # type: ignore
+
+                info["device"] = (
+                    "cuda" if getattr(torch.cuda, "is_available", lambda: False)() else "cpu"
+                )
+            except Exception:
+                info["device"] = "cpu"
+            try:
+                probe = fn(["__dim_probe__"])
+                if probe and isinstance(probe[0], (list, tuple)):
+                    info["embedding_dim"] = len(probe[0])
+            except Exception:
+                pass
+        return info
+
+    def hybrid_query_trace(self, query: str, n_results: int = 3) -> dict:
+        """Same as ``hybrid_query`` but returns the internal breakdown plus
+        store metadata so the visualizer can show a real vector-search panel.
+
+        We deliberately pull *more* semantic candidates than the caller asks
+        for (``n_candidates = max(n_results * 4, 8)``) so the visualizer can
+        render a ranked list of what the vector DB considered, not just the
+        final top-K.
+        """
+        keyword_results = self.keyword_search(query)
+
+        info = self.store_info()
+        collection_size = info.get("count") or 0
+        n_candidates = max(n_results * 4, 8)
+        if collection_size:
+            n_candidates = min(n_candidates, collection_size)
+
+        semantic_docs: list[str] = []
+        semantic_metas: list[dict] = []
+        semantic_distances: list[float | None] = []
+        try:
+            raw = self.collection.query(
+                query_texts=[query],
+                n_results=max(n_candidates, 1),
+                include=["documents", "metadatas", "distances"],
+            )
+            docs = raw.get("documents", [[]]) or [[]]
+            metas = raw.get("metadatas", [[]]) or [[]]
+            dists = raw.get("distances", [[]]) or [[]]
+            if docs and isinstance(docs[0], list):
+                semantic_docs = list(docs[0])
+            if metas and isinstance(metas[0], list):
+                semantic_metas = list(metas[0])
+            if dists and isinstance(dists[0], list):
+                semantic_distances = list(dists[0])
+        except Exception:
+            # Chroma may reject "include" on older versions or on empty stores.
+            fallback = self.query(query, n_results).get("documents", [[]])
+            if fallback and isinstance(fallback[0], list):
+                semantic_docs = list(fallback[0])
+
+        # Pad metas / distances so per-doc zip works in the caller.
+        while len(semantic_metas) < len(semantic_docs):
+            semantic_metas.append({})
+        while len(semantic_distances) < len(semantic_docs):
+            semantic_distances.append(None)
+
+        keyword_entries = [
+            {"document": doc, "metadata": {}, "score": None, "source": "keyword"}
+            for doc in keyword_results
+        ]
+        semantic_entries = [
+            {
+                "document": doc,
+                "metadata": meta or {},
+                "score": dist,
+                "source": "semantic",
+            }
+            for doc, meta, dist in zip(semantic_docs, semantic_metas, semantic_distances)
+        ]
+
+        # Combined, deduplicated by document identity, preserving keyword order first.
+        seen: set[str] = set()
+        combined: list[dict] = []
+        for entry in keyword_entries + semantic_entries:
+            key = entry["document"]
+            if key in seen:
+                continue
+            seen.add(key)
+            combined.append(entry)
+        combined = combined[:n_results]
+
+        return {
+            "store": info,
+            "query": query,
+            "n_candidates": n_candidates,
+            "n_results": n_results,
+            "keyword": keyword_entries,
+            "semantic": semantic_entries,  # full ranked candidate list
+            "combined": combined,          # post-fusion top-K actually used
+        }
+
 

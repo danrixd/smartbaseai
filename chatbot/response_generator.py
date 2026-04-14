@@ -19,6 +19,7 @@ from __future__ import annotations
 import re
 from typing import Iterable, Mapping
 
+from ai.models.anthropic_model import AnthropicModel
 from ai.models.ollama_model import OllamaModel
 from ai.models.openai_model import OpenAIModel
 from ai.rag_pipeline import RAGPipeline
@@ -34,6 +35,7 @@ class ResponseGenerator:
     MODELS = {
         "ollama": OllamaModel,
         "openai": OpenAIModel,
+        "anthropic": AnthropicModel,
     }
 
     def __init__(self, tenant_id: str, model_type: str = "ollama", **model_kwargs) -> None:
@@ -119,6 +121,90 @@ class ResponseGenerator:
 
         prompt = self._build_prompt(user_message, history, context)
         return self.model.generate(prompt)
+
+    # ------------------------------------------------------------------
+    def generate_response_trace(
+        self,
+        user_message: str,
+        history: Iterable[Mapping[str, str]] | None = None,
+    ) -> dict:
+        """Same as ``generate_response`` but returns a full pipeline trace.
+
+        The returned dict is designed to be rendered in the RAG visualizer:
+        every stage exposes the exact data that flowed through it so a viewer
+        can see, for a single query, which document triggered the retrieval
+        and which structured row (if any) grounded the answer.
+        """
+        # 1. History (serialized for display only)
+        history_list = list(history or [])
+        history_text = self._format_history(history_list)
+
+        # 2. Structured DB lookup
+        db_match = DATE_PATTERN.search(user_message)
+        db_row: dict = {}
+        db_text = ""
+        if db_match:
+            date_str = db_match.group(0)
+            db_row = exact_lookup(date_str, self.tenant_id) or {}
+            if db_row:
+                db_text = (
+                    f"Close value for {date_str} is {db_row['close']} "
+                    f"(Open: {db_row['open']}, High: {db_row['high']}, "
+                    f"Low: {db_row['low']}, Volume: {db_row['volume']})"
+                )
+        db_stage = {
+            "detected_date": db_match.group(0) if db_match else None,
+            "matched": bool(db_row),
+            "row": db_row,
+            "text": db_text,
+        }
+
+        # 3. Hybrid retrieval with per-source breakdown + store metadata
+        rag_stage: dict = {
+            "store": None,
+            "keyword": [],
+            "semantic": [],
+            "combined": [],
+            "text": "",
+            "n_candidates": 0,
+            "n_results": 3,
+        }
+        store = getattr(self.rag, "store", None)
+        if store is not None and hasattr(store, "hybrid_query_trace"):
+            trace = store.hybrid_query_trace(user_message, n_results=3)
+            rag_stage.update(trace)
+            rag_stage["text"] = "\n".join(e["document"] for e in trace.get("combined", []))
+        else:
+            rag_stage["text"] = self._search_rag(user_message)
+
+        # 4. Fusion
+        merged_context = self._merge_sources(db_text, rag_stage["text"])
+
+        # 5. Prompt assembly
+        prompt = self._build_prompt(user_message, history_list, merged_context) if merged_context else ""
+
+        # 6. LLM generation
+        if merged_context:
+            reply = self.model.generate(prompt)
+        else:
+            reply = "No information"
+
+        return {
+            "query": user_message,
+            "tenant_id": self.tenant_id,
+            "stages": {
+                "history": {"messages": history_list, "text": history_text},
+                "db_lookup": db_stage,
+                "rag_retrieval": rag_stage,
+                "fusion": {"db_text": db_text, "rag_text": rag_stage["text"], "merged": merged_context},
+                "prompt": {"full": prompt},
+                "llm": {
+                    "model_type": self.model.__class__.__name__,
+                    "reply": reply,
+                },
+            },
+            "reply": reply,
+        }
 
 
 # ---------------------------------------------------------------------------
