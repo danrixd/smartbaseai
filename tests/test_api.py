@@ -30,7 +30,7 @@ def setup_client(tmp_path, monkeypatch):
     monkeypatch.setattr(init_users_db, "DB_PATH", db_path)
     init_users_db.init_db()
 
-    monkeypatch.setattr(routes_files, "UPLOAD_DIR", tmp_path / "uploads")
+    monkeypatch.setattr(routes_files, "VAULT_FALLBACK", tmp_path / "vaults")
 
     return TestClient(app)
 

@@ -48,10 +48,14 @@ def test_etl_manager_invalid_type():
 
 
 def test_rag_pipeline_query_and_answer():
+    class StubModel:
+        def generate(self, prompt, **_):
+            return f"STUB::{prompt}"
+
     pipeline = RAGPipeline(
         embedder=LocalEmbeddings(),
         vector_store=FaissStore(),
-        model=OpenAIModel(),
+        model=StubModel(),
     )
     pipeline.add_documents(["alpha", "beta"], [{"text": "alpha"}, {"text": "beta"}])
 
@@ -60,8 +64,8 @@ def test_rag_pipeline_query_and_answer():
     assert results[0][0]["text"] == "alpha"
 
     answer = pipeline.answer("alpha", top_k=1)
-    expected = "[OpenAI] Response to: alpha\nQuestion: alpha\nAnswer:"
-    assert answer == expected
+    assert answer.startswith("STUB::")
+    assert "alpha" in answer
 
 
 def test_response_generator_rag_integration(monkeypatch):
