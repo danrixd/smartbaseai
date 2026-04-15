@@ -1,0 +1,76 @@
+# GitHub Actions workflow template.
+#
+# This file cannot live at its final path (.github/workflows/test.yml)
+# until the pushing PAT has the "workflow" scope. GitHub rejects any push
+# that adds or modifies files under .github/workflows/ from a token without
+# that scope, regardless of repo permissions.
+#
+# To activate CI:
+#
+#   1. gh auth refresh -s workflow    # grants workflow scope on your PAT
+#   2. mkdir -p .github/workflows
+#   3. cp docs/ci-workflow.yml.template .github/workflows/test.yml
+#   4. git add .github/workflows/test.yml
+#   5. git commit -m "ci: add test workflow"
+#   6. git push
+#
+# After the first successful run, add the badge to the README:
+#
+#   ![test](https://github.com/danrixd/smartbaseai/actions/workflows/test.yml/badge.svg)
+
+name: test
+
+on:
+  push:
+    branches: [main, upgrade]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend:
+    name: Backend (pytest)
+    runs-on: ubuntu-latest
+    env:
+      SECRET_KEY: ci-placeholder-secret-min-32-bytes-for-hmac
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install backend deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run pytest
+        run: pytest -q
+
+  frontend:
+    name: Frontend (vite build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend deps
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Lint (non-blocking)
+        run: npm run lint || true
