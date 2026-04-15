@@ -1,13 +1,29 @@
 import { useState, useEffect, useCallback, useRef, useContext } from 'react';
 import { useLocation } from 'react-router-dom';
-import Layout from '../components/Layout';
 import api from '../api/api';
 import AppContext from '../store/AppContext';
+import VaultGate from '../components/VaultGate';
 
 export default function Chat() {
   const location = useLocation();
   const { activeTenant, setSessions } = useContext(AppContext);
   const role = localStorage.getItem('role');
+  const [models, setModels] = useState([]);
+  const [selectedModelIdx, setSelectedModelIdx] = useState(0);
+
+  useEffect(() => {
+    if (!activeTenant) {
+      setModels([]);
+      return;
+    }
+    api
+      .get(`/admin/tenants/${activeTenant}`)
+      .then((res) => {
+        setModels(res.data?.models || []);
+        setSelectedModelIdx(0);
+      })
+      .catch(() => setModels([]));
+  }, [activeTenant]);
   const [sessionId, setSessionId] = useState(() => {
     const params = new URLSearchParams(location.search);
     return params.get('session') || crypto.randomUUID();
@@ -65,10 +81,14 @@ export default function Chat() {
       return;
     }
 
+    const chosen = models[selectedModelIdx];
     const payload = {
       session_id: sessionId,
       tenant_id: tenant,
       message: input,
+      ...(chosen
+        ? { model_provider: chosen.provider, model_name: chosen.name }
+        : {}),
     };
 
     console.log('>>> Sending to backend', JSON.stringify(payload));
@@ -101,9 +121,12 @@ export default function Chat() {
     'How do I make an HTTP request in JavaScript?',
   ];
 
+  if (!activeTenant) {
+    return <VaultGate role={role} title="Pick a vault to start chatting" />;
+  }
+
   return (
-    <Layout>
-      <div className="flex flex-col flex-1 overflow-hidden">
+    <div className="flex flex-col flex-1 overflow-hidden">
         <div ref={containerRef} className="flex-1 overflow-y-auto p-4 bg-gray-50">
           <div className="max-w-3xl mx-auto space-y-6">
             {history.length === 0 && (
@@ -159,6 +182,25 @@ export default function Chat() {
 
         <div className="bg-white border-t border-gray-200 p-4">
           <div className="max-w-3xl mx-auto">
+            {models.length > 0 && (
+              <div className="flex items-center gap-2 mb-2 text-xs text-gray-500">
+                <span>Model:</span>
+                <select
+                  className="px-2 py-1 border border-gray-300 rounded text-xs"
+                  value={selectedModelIdx}
+                  onChange={(e) => setSelectedModelIdx(Number(e.target.value))}
+                >
+                  {models.map((m, i) => (
+                    <option key={`${m.provider}:${m.name}`} value={i}>
+                      {m.label || `${m.provider}/${m.name}`}
+                    </option>
+                  ))}
+                </select>
+                <span className="text-gray-400">
+                  vault: <span className="font-mono">{activeTenant}</span>
+                </span>
+              </div>
+            )}
             <div className="relative">
               <textarea
                 rows="1"
@@ -192,8 +234,7 @@ export default function Chat() {
             </p>
           </div>
         </div>
-      </div>
-    </Layout>
+    </div>
   );
 }
 

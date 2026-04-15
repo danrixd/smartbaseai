@@ -3,9 +3,7 @@ from fastapi.security import HTTPBearer
 import jwt
 
 from db import user_repository
-
-SECRET_KEY = "super_secret"
-ALGORITHM = "HS256"
+from api.config import SECRET_KEY, ALGORITHM
 
 security = HTTPBearer()
 

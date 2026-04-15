@@ -2,6 +2,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from . import routes_chat, routes_admin, routes_auth, routes_files
+from .logging_config import RequestIdMiddleware, configure_logging
+
+configure_logging()
 
 app = FastAPI(title="SmartBase API")
 
@@ -16,7 +19,9 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Request-ID"],
 )
+app.add_middleware(RequestIdMiddleware)
 
 app.include_router(routes_auth.router)
 app.include_router(routes_chat.router)

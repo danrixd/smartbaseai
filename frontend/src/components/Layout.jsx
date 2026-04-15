@@ -2,10 +2,10 @@ import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import api from '../api/api';
 import AppContext from '../store/AppContext';
+import ApiStatus from './ApiStatus';
 
 export default function Layout({ children }) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [sessions, setSessions] = useState([]);
   const [tenants, setTenants] = useState([]);
   const [activeTenant, setActiveTenant] = useState(
@@ -44,7 +44,7 @@ export default function Layout({ children }) {
       const t = (localStorage.getItem('tenant_id') || '').replace(/\s+/g, '');
       setTenants(t ? [t] : []);
       setActiveTenant(t || '');
-      localStorage.setItem('active_tenant', t || '');
+      if (t) localStorage.setItem('active_tenant', t);
     }
   }, [role]);
 
@@ -55,12 +55,14 @@ export default function Layout({ children }) {
       .catch(() => setSessions([]));
   }, []);
 
+  // Intentionally NOT auto-selecting a tenant for super_admin — they must
+  // pick a vault from the top-right dropdown before any per-vault page loads.
   useEffect(() => {
-    if (!activeTenant && tenants.length > 0) {
+    if (role !== 'super_admin' && !activeTenant && tenants.length > 0) {
       setActiveTenant(tenants[0]);
       localStorage.setItem('active_tenant', tenants[0]);
     }
-  }, [activeTenant, tenants]);
+  }, [role, activeTenant, tenants]);
 
   const updateActiveTenant = (t) => {
     const id = (t || '').replace(/\s+/g, '');
@@ -132,8 +134,11 @@ export default function Layout({ children }) {
                 <Link className="block p-2 rounded hover:bg-gray-800" to="/chat">
                   Chat
                 </Link>
-                <Link className="block p-2 rounded hover:bg-gray-800" to="/files">
-                  Files
+                <Link className="block p-2 rounded hover:bg-gray-800" to="/vault">
+                  Vault
+                </Link>
+                <Link className="block p-2 rounded hover:bg-gray-800" to="/rag">
+                  RAG Visualizer
                 </Link>
                 {(role === 'admin' || role === 'super_admin') && (
                   <>
@@ -145,21 +150,27 @@ export default function Layout({ children }) {
                     </Link>
                   </>
                 )}
+                {role === 'super_admin' && (
+                  <>
+                    <Link className="block p-2 rounded hover:bg-gray-800" to="/search">
+                      Cross-tenant Search
+                    </Link>
+                    <Link className="block p-2 rounded hover:bg-gray-800" to="/usage">
+                      Usage
+                    </Link>
+                    <Link className="block p-2 rounded hover:bg-gray-800" to="/audit">
+                      Audit Log
+                    </Link>
+                    <Link className="block p-2 rounded hover:bg-gray-800" to="/settings">
+                      Settings
+                    </Link>
+                  </>
+                )}
               </nav>
             </div>
 
             <div className="p-4 border-t border-gray-700">
-              <h3 className="text-sm font-semibold text-gray-400 mb-2">API Connections</h3>
-              <div className="space-y-2">
-                <div className="flex items-center gap-2 p-2 rounded hover:bg-gray-800">
-                  <div className="w-2 h-2 rounded-full bg-green-500"></div>
-                  <span className="text-sm">OpenAI API</span>
-                </div>
-                <div className="flex items-center gap-2 p-2 rounded hover:bg-gray-800">
-                  <div className="w-2 h-2 rounded-full bg-green-500"></div>
-                  <span className="text-sm">Local Model</span>
-                </div>
-              </div>
+              <ApiStatus />
             </div>
           </div>
 
@@ -193,62 +204,38 @@ export default function Layout({ children }) {
             </div>
 
             <div className="flex items-center gap-4">
-              <button
-                className="text-gray-600 hover:text-gray-900"
-                onClick={() => setSettingsOpen(true)}
-              >
-                <i className="fas fa-cog"></i>
-              </button>
+              {role === 'super_admin' && tenants.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-gray-500">Active vault:</span>
+                  <select
+                    value={activeTenant || ''}
+                    onChange={(e) => updateActiveTenant(e.target.value)}
+                    className="px-2 py-1 border border-gray-300 rounded text-sm"
+                  >
+                    <option value="">— choose a vault —</option>
+                    {tenants.map((t) => (
+                      <option key={t} value={t}>
+                        {t}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              {role === 'super_admin' && (
+                <button
+                  className="text-gray-600 hover:text-gray-900"
+                  onClick={() => navigate('/settings')}
+                  title="Settings"
+                >
+                  <i className="fas fa-cog"></i>
+                </button>
+              )}
             </div>
           </header>
 
           {/* Content */}
           <main className="flex-1 flex flex-col overflow-hidden">{children}</main>
         </div>
-
-        {/* Settings Modal */}
-        {settingsOpen && (
-          <div
-            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
-            onClick={() => setSettingsOpen(false)}
-          >
-            <div
-              className="bg-white rounded-lg shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-xl font-semibold">Settings</h3>
-                  <button
-                    className="text-gray-500 hover:text-gray-700"
-                    onClick={() => setSettingsOpen(false)}
-                  >
-                    <i className="fas fa-times"></i>
-                  </button>
-                </div>
-
-                <div className="space-y-6">
-                  {(role === 'admin' || role === 'super_admin') && (
-                    <div>
-                      <label className="block text-sm text-gray-600 mb-1">Tenant</label>
-                      <select
-                        value={activeTenant}
-                        onChange={(e) => updateActiveTenant(e.target.value)}
-                        className="w-full p-2 border border-gray-300 rounded"
-                      >
-                        {tenants.map((t) => (
-                          <option key={t} value={t}>
-                            {t}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     </AppContext.Provider>
   );

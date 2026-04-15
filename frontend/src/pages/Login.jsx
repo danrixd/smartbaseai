@@ -21,8 +21,12 @@ export default function Login() {
       localStorage.setItem('role', profile.data.role);
       localStorage.setItem('tenant_id', tid);
       localStorage.setItem('active_tenant', tid);
+      localStorage.setItem('username', profile.data.username || username);
 
-      navigate('/chat');
+      // Bounce back to wherever the session-timeout interceptor kicked us from
+      const redirect = sessionStorage.getItem('post_login_redirect');
+      sessionStorage.removeItem('post_login_redirect');
+      navigate(redirect || '/chat');
     } catch (err) {
       console.error(err);
       setError('Invalid credentials');

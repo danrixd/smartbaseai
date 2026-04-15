@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import Layout from '../components/Layout';
 import api from '../api/api';
 
 export default function Tenants() {
@@ -37,7 +36,6 @@ export default function Tenants() {
   };
 
   return (
-    <Layout>
       <div className="p-4 flex-1 overflow-y-auto">
         <div className="max-w-3xl mx-auto">
           <form onSubmit={addTenant} className="mb-4 flex space-x-2">
@@ -85,6 +83,5 @@ export default function Tenants() {
           </table>
         </div>
       </div>
-    </Layout>
   );
 }

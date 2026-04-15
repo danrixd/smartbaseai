@@ -11,3 +11,6 @@ ollama
 requests
 chromadb
 sentence-transformers
+python-dotenv
+anthropic
+openai
