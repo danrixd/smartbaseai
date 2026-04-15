@@ -409,11 +409,14 @@ def main() -> int:
         if args.judge:
             row.judge_pass = judge_via_anthropic(question, canonical, reply)
         summary.record(row)
-        auto = "✓" if (row.numeric_pass or row.substring_pass) else "✗"
+        auto = "PASS" if (row.numeric_pass or row.substring_pass) else "FAIL"
         jt = ""
         if row.judge_pass is not None:
-            jt = "  j=✓" if row.judge_pass else "  j=✗"
-        print(f"    {auto}  {latency_ms:.0f}ms{jt}  reply[:80]={reply[:80]!r}")
+            jt = "  judge=PASS" if row.judge_pass else "  judge=FAIL"
+        # ASCII-only to avoid Windows cp1252 UnicodeEncodeError when the
+        # terminal redirects stdout without a utf-8 codec.
+        safe_reply = (reply[:80] or "").encode("ascii", "replace").decode("ascii")
+        print(f"    {auto}  {latency_ms:.0f}ms{jt}  reply[:80]={safe_reply!r}")
 
     write_report(
         summary,
